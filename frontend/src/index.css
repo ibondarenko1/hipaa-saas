@@ -1,0 +1,215 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-base: #050d1a;
+    --bg-surface: #0a1628;
+    --bg-elevated: #0f2040;
+    --border: rgba(59, 130, 246, 0.12);
+    --border-hover: rgba(59, 130, 246, 0.28);
+    --text-primary: #e2e8f0;
+    --text-secondary: #94a3b8;
+    --text-muted: #475569;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg-base);
+    background-image:
+      radial-gradient(ellipse 80% 60% at 50% -10%, rgba(59, 130, 246, 0.08) 0%, transparent 60%);
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--bg-surface);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(59, 130, 246, 0.3);
+    border-radius: 3px;
+  }
+
+  ::selection {
+    background: rgba(59, 130, 246, 0.3);
+    color: white;
+  }
+}
+
+@layer components {
+  /* Glass card */
+  .card {
+    @apply bg-navy-900 border border-blue-500/10 rounded-xl;
+    box-shadow: 0 0 0 1px rgba(59,130,246,0.06), 0 4px 24px rgba(0,0,0,0.4);
+  }
+
+  .card-hover {
+    @apply card transition-all duration-200;
+  }
+  .card-hover:hover {
+    border-color: rgba(59,130,246,0.22);
+    box-shadow: 0 0 0 1px rgba(59,130,246,0.12), 0 8px 32px rgba(0,0,0,0.5);
+    transform: translateY(-1px);
+  }
+
+  /* Buttons */
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm
+           bg-blue-600 hover:bg-blue-500 text-white
+           transition-all duration-150 active:scale-95
+           disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100;
+    box-shadow: 0 0 0 1px rgba(59,130,246,0.3), 0 2px 8px rgba(59,130,246,0.2);
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm
+           bg-navy-800 hover:bg-navy-700 text-slate-300 border border-blue-500/15
+           transition-all duration-150 active:scale-95
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm
+           bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30
+           transition-all duration-150 active:scale-95;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm
+           text-slate-400 hover:text-slate-200 hover:bg-white/5
+           transition-all duration-150;
+  }
+
+  /* Form inputs */
+  .input {
+    @apply w-full px-3 py-2 rounded-lg text-sm font-mono
+           bg-navy-950 border border-blue-500/15 text-slate-200
+           placeholder:text-slate-600
+           focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20
+           transition-all duration-150;
+  }
+
+  .input-label {
+    @apply block text-xs font-medium text-slate-400 mb-1.5 tracking-wide uppercase;
+  }
+
+  /* Status badges */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold;
+  }
+  .badge-pass     { @apply badge bg-emerald-500/15 text-emerald-400; }
+  .badge-fail     { @apply badge bg-red-500/15 text-red-400; }
+  .badge-partial  { @apply badge bg-amber-500/15 text-amber-400; }
+  .badge-unknown  { @apply badge bg-slate-500/15 text-slate-400; }
+
+  .badge-critical { @apply badge bg-red-500/15 text-red-400 ring-1 ring-red-500/20; }
+  .badge-high     { @apply badge bg-orange-500/15 text-orange-400; }
+  .badge-medium   { @apply badge bg-yellow-500/15 text-yellow-400; }
+  .badge-low      { @apply badge bg-green-500/15 text-green-400; }
+
+  .badge-draft     { @apply badge bg-slate-500/15 text-slate-400; }
+  .badge-in-progress { @apply badge bg-blue-500/15 text-blue-400; }
+  .badge-submitted { @apply badge bg-purple-500/15 text-purple-400; }
+  .badge-completed { @apply badge bg-emerald-500/15 text-emerald-400; }
+  .badge-generated { @apply badge bg-blue-500/15 text-blue-300; }
+  .badge-published { @apply badge bg-emerald-500/15 text-emerald-300; }
+
+  /* Table */
+  .data-table {
+    @apply w-full text-sm;
+  }
+  .data-table th {
+    @apply px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider
+           border-b border-blue-500/10;
+  }
+  .data-table td {
+    @apply px-4 py-3 border-b border-blue-500/06 text-slate-300;
+  }
+  .data-table tr:hover td {
+    @apply bg-blue-500/03;
+  }
+  .data-table tr:last-child td {
+    @apply border-b-0;
+  }
+
+  /* Sidebar nav item */
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
+           text-slate-400 hover:text-slate-200 hover:bg-white/5
+           transition-all duration-150 cursor-pointer;
+  }
+  .nav-item-active {
+    @apply nav-item text-blue-400 bg-blue-500/10;
+    box-shadow: inset 2px 0 0 rgba(59,130,246,0.6);
+  }
+
+  /* Metric card */
+  .metric-card {
+    @apply card p-5 flex flex-col gap-1;
+  }
+
+  /* Grid pattern bg */
+  .grid-bg {
+    background-image:
+      linear-gradient(rgba(59,130,246,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59,130,246,0.03) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  /* Progress bar */
+  .progress-bar {
+    @apply h-1.5 rounded-full bg-navy-800 overflow-hidden;
+  }
+  .progress-fill {
+    @apply h-full rounded-full transition-all duration-700 ease-out;
+  }
+
+  /* Divider */
+  .divider {
+    @apply border-t border-blue-500/08 my-4;
+  }
+
+  /* Answer option button */
+  .answer-option {
+    @apply px-4 py-2 rounded-lg text-sm font-medium border transition-all duration-150 cursor-pointer;
+  }
+  .answer-option-default {
+    @apply answer-option border-blue-500/15 text-slate-400 hover:border-blue-500/40 hover:text-slate-200;
+  }
+  .answer-option-selected-yes {
+    @apply answer-option border-emerald-500/50 bg-emerald-500/10 text-emerald-400;
+  }
+  .answer-option-selected-no {
+    @apply answer-option border-red-500/50 bg-red-500/10 text-red-400;
+  }
+  .answer-option-selected-partial {
+    @apply answer-option border-amber-500/50 bg-amber-500/10 text-amber-400;
+  }
+  .answer-option-selected-unknown {
+    @apply answer-option border-slate-500/50 bg-slate-500/10 text-slate-400;
+  }
+  .answer-option-selected-na {
+    @apply answer-option border-slate-600/50 bg-slate-600/10 text-slate-500;
+  }
+}
