@@ -144,10 +144,10 @@
            border-b border-blue-500/10;
   }
   .data-table td {
-    @apply px-4 py-3 border-b border-blue-500/06 text-slate-300;
+    @apply px-4 py-3 border-b border-blue-500/10 text-slate-300;
   }
   .data-table tr:hover td {
-    @apply bg-blue-500/03;
+    @apply bg-blue-500/5;
   }
   .data-table tr:last-child td {
     @apply border-b-0;
@@ -187,7 +187,7 @@
 
   /* Divider */
   .divider {
-    @apply border-t border-blue-500/08 my-4;
+    @apply border-t border-blue-500/10 my-4;
   }
 
   /* Answer option button */
