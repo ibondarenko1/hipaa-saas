@@ -308,8 +308,8 @@ async def seed():
         print(f"✓ Questions seeded: {questions_created}")
 
         # ── First internal user ────────────────────────────────────────────────
-        admin_email = os.getenv("ADMIN_EMAIL", "admin@summitrange.com")
-        admin_password = os.getenv("ADMIN_PASSWORD", "ChangeMe123!")
+        admin_email = (os.getenv("ADMIN_EMAIL", "admin@summitrange.com") or "").strip().lower()
+        admin_password = os.getenv("ADMIN_PASSWORD", "Admin1234!")
 
         result = await db.execute(select(User).where(User.email == admin_email))
         admin = result.scalar_one_or_none()

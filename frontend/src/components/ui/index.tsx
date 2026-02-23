@@ -59,10 +59,18 @@ export function Spinner({ className }: { className?: string }) {
 
 export function PageLoader() {
   return (
-    <div className="flex items-center justify-center h-64">
-      <div className="flex flex-col items-center gap-3">
+    <div
+      className="flex items-center justify-center h-64"
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}
+    >
+      <div
+        className="flex flex-col items-center gap-3"
+        style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}
+      >
         <Spinner className="w-8 h-8 text-blue-500" />
-        <p className="text-sm text-slate-500">Loading…</p>
+        <p className="text-sm text-slate-500" style={{ margin: 0, fontSize: 14, color: '#94a3b8' }}>
+          Loading…
+        </p>
       </div>
     </div>
   )

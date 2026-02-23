@@ -220,6 +220,16 @@ export interface ReportFileItem {
   size_bytes: number
 }
 
+export interface ReportFileDTO {
+  id: string
+  package_id: string
+  file_type: string
+  format: string
+  file_name: string
+  size_bytes: number | null
+  created_at: string
+}
+
 // ── Audit ─────────────────────────────────────────────────────────────────────
 export interface AuditEventDTO {
   id: string

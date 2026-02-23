@@ -1,17 +1,28 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ShieldCheck, Lock, Mail, AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { Spinner } from '../../components/ui'
 
 export default function LoginPage() {
-  const { login, memberships } = useAuth()
+  const { login, user, memberships, isInternal } = useAuth()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    if (user) {
+      if (isInternal) navigate('/internal', { replace: true })
+      else if (memberships[0]) navigate(`/client/${memberships[0].tenant_id}`, { replace: true })
+      else navigate('/internal', { replace: true })
+    }
+  }, [user, isInternal, memberships, navigate])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const DEMO_EMAIL = 'admin@summitrange.com'
+  const DEMO_PASSWORD = 'Admin1234!'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -37,12 +48,32 @@ export default function LoginPage() {
     }
   }
 
+  const handleDemoLogin = async () => {
+    setError('')
+    setLoading(true)
+    try {
+      await login(DEMO_EMAIL, DEMO_PASSWORD)
+      const mem = JSON.parse(localStorage.getItem('user') || '{}')?.memberships || []
+      const isInternal = mem.some((m: any) => m.role === 'internal_user')
+      if (isInternal) navigate('/internal')
+      else {
+        const first = mem[0]
+        if (first) navigate(`/client/${first.tenant_id}`)
+        else navigate('/internal')
+      }
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Invalid credentials. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
-    <div className="min-h-screen grid-bg flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-navy-950 via-violet-950/30 to-navy-950">
       {/* Background glow */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px]
-          bg-blue-600/08 blur-[80px] rounded-full" />
+          bg-violet-600/15 blur-[80px] rounded-full" />
         <div className="absolute bottom-0 right-0 w-[400px] h-[400px]
           bg-blue-900/10 blur-[100px] rounded-full" />
       </div>
@@ -56,6 +87,7 @@ export default function LoginPage() {
           </div>
           <h1 className="text-xl font-bold text-slate-100">HIPAA Readiness Platform</h1>
           <p className="text-sm text-slate-500 mt-1">Summit Range Consulting</p>
+          <p className="text-xs text-slate-600 mt-0.5">Pipeline: Assessment → Gap analysis → Remediation → Report</p>
         </div>
 
         {/* Card */}
@@ -117,6 +149,16 @@ export default function LoginPage() {
               {loading ? <Spinner className="w-4 h-4" /> : null}
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
+
+            <button
+              type="button"
+              onClick={handleDemoLogin}
+              disabled={loading}
+              className="w-full mt-3 py-2.5 rounded-lg bg-slate-700/80 border border-slate-500 text-slate-200 text-sm font-medium hover:bg-slate-600/80 transition-colors flex items-center justify-center gap-2"
+            >
+              {loading ? <Spinner className="w-4 h-4" /> : null}
+              {loading ? 'Signing in…' : '▶ Sign in as Demo'}
+            </button>
           </form>
 
           <div className="mt-5 pt-4 border-t border-blue-500/08">
@@ -127,12 +169,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Demo hint */}
-        <div className="mt-4 text-center">
-          <p className="text-xs text-slate-600">
-            Demo: <span className="font-mono text-slate-500">admin@summitrange.com</span>
-          </p>
-        </div>
       </div>
     </div>
   )

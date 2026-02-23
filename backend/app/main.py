@@ -12,7 +12,13 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:3000", "http://localhost:5173",
+        "http://127.0.0.1:3000", "http://127.0.0.1:5173",
+        "http://0.0.0.0:5173",
+        "http://192.168.40.189:5173",
+    ],
+    allow_origin_regex=r"(http://192\.168\.\d+\.\d+:5173|https://[a-z0-9-]+\.loca\.lt)",  # LAN + localtunnel
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

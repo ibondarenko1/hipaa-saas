@@ -61,7 +61,7 @@ export default function AppRouter() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/" element={<RootRedirect />} />
+      <Route path="/" element={<LoginPage />} />
 
       {/* Internal Portal */}
       <Route
@@ -99,7 +99,7 @@ export default function AppRouter() {
         <Route path="reports" element={<ClientReports />} />
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   )
 }

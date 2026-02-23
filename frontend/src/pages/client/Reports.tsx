@@ -2,22 +2,62 @@ import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   FileText, Download, CheckCircle2, Clock, Lock,
-  FileSpreadsheet, FilePdf, ExternalLink, ShieldCheck
+  FileSpreadsheet, ShieldCheck
 } from 'lucide-react'
-import { reportsApi, assessmentsApi } from '../../services/api'
-import { ReportPackageDTO, AssessmentDTO } from '../../types'
+import { reportsApi, assessmentsApi, engineApi } from '../../services/api'
+import { ReportPackageDTO, ReportFileDTO, AssessmentDTO } from '../../types'
 import {
-  PageLoader, StatusBadge, SectionHeader, EmptyState, Spinner
+  PageLoader, StatusBadge, EmptyState, Spinner
 } from '../../components/ui'
 import { format } from 'date-fns'
-import clsx from 'clsx'
 
-const FILE_TYPE_INFO: Record<string, { label: string; icon: React.ElementType; desc: string }> = {
-  executive_summary: { label: 'Executive Summary', icon: FileText, desc: 'PDF — Management overview and posture' },
-  gap_register:      { label: 'Gap Register', icon: FileSpreadsheet, desc: 'XLSX — All identified compliance gaps' },
-  risk_register:     { label: 'Risk Register', icon: FileSpreadsheet, desc: 'XLSX — Risk catalog by severity' },
-  roadmap:           { label: 'Remediation Roadmap', icon: FileSpreadsheet, desc: 'XLSX — 30-60-90 day action plan' },
-  evidence_checklist:{ label: 'Evidence Checklist', icon: FileSpreadsheet, desc: 'XLSX — Evidence status per control' },
+const FILE_TYPE_LABELS: Record<string, string> = {
+  executive_summary: 'Executive Summary (PDF)',
+  gap_register: 'Gap Register (XLSX)',
+  risk_register: 'Risk Register (XLSX)',
+  roadmap: 'Remediation Roadmap (XLSX)',
+  evidence_checklist: 'Evidence Checklist (XLSX)',
+}
+
+function PackageDocumentsList({
+  tenantId,
+  packageId,
+  onDownload,
+  downloadingId,
+}: { tenantId: string; packageId: string; onDownload: (fileId: string, fileName: string) => void; downloadingId: string | null }) {
+  const [files, setFiles] = useState<ReportFileDTO[]>([])
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    reportsApi.listPackageFiles(tenantId, packageId)
+      .then(r => setFiles(r.data))
+      .catch(() => setFiles([]))
+      .finally(() => setLoading(false))
+  }, [tenantId, packageId])
+  if (loading) return <div className="text-xs text-slate-500 py-2 px-5">Loading documents…</div>
+  if (files.length === 0) return null
+  return (
+    <div className="divide-y divide-blue-500/06">
+      {files.map(f => (
+        <div key={f.id} className="flex items-center justify-between px-5 py-3 hover:bg-white/02">
+          <div className="flex items-center gap-3">
+            {f.format === 'PDF' ? <FileText size={16} className="text-red-400" /> : <FileSpreadsheet size={16} className="text-emerald-500" />}
+            <div>
+              <p className="text-sm font-medium text-slate-300">{FILE_TYPE_LABELS[f.file_type] || f.file_name}</p>
+              {f.size_bytes != null && <p className="text-xs text-slate-600">{Math.round(f.size_bytes / 1024)} KB</p>}
+            </div>
+          </div>
+          <button
+            onClick={() => onDownload(f.id, f.file_name)}
+            disabled={downloadingId === f.id}
+            className="btn-primary text-xs"
+          >
+            {downloadingId === f.id ? <Spinner className="w-3.5 h-3.5" /> : <Download size={12} />}
+            Download
+          </button>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export default function ClientReports() {
@@ -26,28 +66,42 @@ export default function ClientReports() {
   const [assessments, setAssessments] = useState<Record<string, AssessmentDTO>>({})
   const [loading, setLoading] = useState(true)
   const [downloadingFile, setDownloadingFile] = useState<string | null>(null)
+  const [snapshotPassPct, setSnapshotPassPct] = useState<number | null>(null)
+  const [snapshotGaps, setSnapshotGaps] = useState<{ Critical: number; High: number; Medium: number; Low: number } | null>(null)
 
   useEffect(() => {
     if (!tenantId) return
-    // Load assessments first to get package IDs
-    assessmentsApi.list(tenantId).then(async aRes => {
-      const all: AssessmentDTO[] = aRes.data
-      const aMap: Record<string, AssessmentDTO> = {}
-      for (const a of all) aMap[a.id] = a
-      setAssessments(aMap)
-
-      // For each completed assessment, try to load its packages
-      // In v1 we'd have a packages listing endpoint, so we'll load from each assessment
-      // For now: use the assessment ID to try to get packages
-      // The API returns packages per assessment via creating a package
-      // Client portal just needs to see published packages
-      // We'll aggregate by attempting to fetch from known assessments
-      // (In production, add GET /tenants/{id}/reports/packages?status=published endpoint)
-
-      // Stub: collect known published packages via per-assessment approach
-      // Since client portal only needs published packages, we do a best-effort
-      setPackages([]) // Will be populated when proper list endpoint exists
-    }).catch(console.error).finally(() => setLoading(false))
+    Promise.all([
+      assessmentsApi.list(tenantId),
+      reportsApi.listPackages(tenantId, { status: 'published' }),
+    ])
+      .then(([aRes, pRes]) => {
+        const all: AssessmentDTO[] = aRes.data
+        const aMap: Record<string, AssessmentDTO> = {}
+        for (const a of all) aMap[a.id] = a
+        setAssessments(aMap)
+        setPackages(pRes.data)
+        const latest = all.find(a => a.status === 'completed' || a.status === 'submitted')
+        if (latest) {
+          Promise.all([
+            engineApi.controls(tenantId, latest.id),
+            engineApi.gaps(tenantId, latest.id),
+          ]).then(([cRes, gRes]) => {
+            const controls = cRes.data as { status: string }[]
+            const gaps = gRes.data as { severity: string }[]
+            const pass = controls.filter(c => c.status === 'Pass').length
+            setSnapshotPassPct(controls.length ? Math.round((pass / controls.length) * 100) : null)
+            setSnapshotGaps({
+              Critical: gaps.filter(g => g.severity === 'Critical').length,
+              High: gaps.filter(g => g.severity === 'High').length,
+              Medium: gaps.filter(g => g.severity === 'Medium').length,
+              Low: gaps.filter(g => g.severity === 'Low').length,
+            })
+          }).catch(() => {})
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false))
   }, [tenantId])
 
   const downloadFile = async (fileId: string, fileName: string) => {
@@ -89,9 +143,45 @@ export default function ClientReports() {
       <div>
         <h1 className="text-xl font-bold text-slate-100">Compliance Reports</h1>
         <p className="text-sm text-slate-500 mt-0.5">
-          Download your published HIPAA readiness assessment report packages.
+          Download your published HIPAA readiness assessment report packages and documents.
         </p>
       </div>
+
+      {/* Snapshot */}
+      {(snapshotPassPct != null || snapshotGaps != null) && (
+        <div className="card p-5">
+          <p className="text-sm font-semibold text-slate-300 mb-3">Your compliance snapshot</p>
+          <div className="flex flex-wrap gap-6">
+            {snapshotPassPct != null && (
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-16 h-16 rounded-full border-4 flex items-center justify-center text-slate-100 font-bold text-lg"
+                  style={{ borderColor: snapshotPassPct >= 70 ? '#10b981' : snapshotPassPct >= 50 ? '#f59e0b' : '#ef4444' }}
+                >
+                  {snapshotPassPct}%
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Controls passed</p>
+                  <p className="text-sm text-slate-400">Overall readiness score</p>
+                </div>
+              </div>
+            )}
+            {snapshotGaps && (
+              <div className="flex items-center gap-3">
+                <div className="flex gap-2">
+                  {(['Critical', 'High', 'Medium', 'Low'] as const).map(sev => (
+                    <div key={sev} className="rounded-lg border border-blue-500/15 bg-navy-800/40 px-3 py-2 text-center">
+                      <p className="text-lg font-bold text-slate-200">{snapshotGaps[sev]}</p>
+                      <p className="text-xs text-slate-500">{sev}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-500">Gaps by severity</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {packages.length === 0 ? (
         <div className="card">
@@ -140,34 +230,20 @@ export default function ClientReports() {
                         ? <Spinner className="w-3.5 h-3.5" />
                         : <Download size={13} />
                       }
-                      Download All
+                      Download all (ZIP)
                     </button>
                   </div>
                 </div>
 
-                {/* File list */}
-                <div className="divide-y divide-blue-500/06">
-                  {Object.entries(FILE_TYPE_INFO).map(([type, info]) => {
-                    const Icon = info.icon
-                    return (
-                      <div key={type} className="flex items-center justify-between px-5 py-3 hover:bg-white/02">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-blue-600/10 border border-blue-500/15 flex items-center justify-center flex-shrink-0">
-                            <Icon size={14} className="text-blue-400" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-slate-300">{info.label}</p>
-                            <p className="text-xs text-slate-600">{info.desc}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Lock size={11} className="text-emerald-500" />
-                          <span className="text-xs text-slate-600 mr-3">Immutable</span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                {/* Documents with real download links */}
+                {tenantId && (
+                  <PackageDocumentsList
+                    tenantId={tenantId}
+                    packageId={pkg.id}
+                    onDownload={downloadFile}
+                    downloadingId={downloadingFile}
+                  />
+                )}
 
                 {/* Footer notice */}
                 <div className="px-5 py-3 bg-navy-800/30 border-t border-blue-500/06">

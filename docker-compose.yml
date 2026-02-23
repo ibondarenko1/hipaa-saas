@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -30,21 +28,19 @@ services:
     ports:
       - "9000:9000"
       - "9001:9001"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    # No healthcheck: recent MinIO images don't include curl; minio_init waits with retries
 
   minio_init:
     image: minio/mc:latest
     container_name: hipaa_minio_init
     depends_on:
       minio:
-        condition: service_healthy
+        condition: service_started
     entrypoint: >
       /bin/sh -c "
-        mc alias set local http://minio:9000 minioadmin minioadmin &&
+        echo 'Waiting for MinIO...' &&
+        until mc alias set local http://minio:9000 minioadmin minioadmin 2>/dev/null; do sleep 2; done &&
+        mc ready local &&
         mc mb --ignore-existing local/hipaa-evidence &&
         mc anonymous set none local/hipaa-evidence &&
         echo 'MinIO bucket ready'
@@ -67,18 +63,26 @@ services:
       LLM_ENABLED: ${LLM_ENABLED:-false}
       DEBUG: ${DEBUG:-false}
     ports:
-      - "8000:8000"
+      - "0.0.0.0:8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
-      minio:
-        condition: service_healthy
+      minio_init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
     volumes:
       - ./backend:/app
     command: >
       sh -c "
         alembic upgrade head &&
         python scripts/seed.py &&
+        (python -m app.scripts.seed_demo_client 2>/dev/null || true) &&
+        python scripts/reset_admin_password.py &&
         uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
       "
 
@@ -89,7 +93,10 @@ services:
     volumes:
       - ./frontend:/app
     ports:
-      - "5173:5173"
+      - "0.0.0.0:5173:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
     command: >
       sh -c "
         npm install &&
@@ -97,6 +104,7 @@ services:
       "
     environment:
       NODE_ENV: development
+      VITE_PROXY_TARGET: http://backend:8000
 
 volumes:
   postgres_data:

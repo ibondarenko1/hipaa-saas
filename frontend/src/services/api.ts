@@ -2,7 +2,11 @@ import axios from 'axios'
 
 const api = axios.create({
   baseURL: '/api/v1',
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Content-Type': 'application/json',
+    // Skip ngrok free-tier interstitial when app is opened via ngrok URL
+    'ngrok-skip-browser-warning': 'true',
+  },
 })
 
 // Attach JWT on every request
@@ -114,12 +118,16 @@ export const engineApi = {
 
 // ── Reports ───────────────────────────────────────────────────────────────────
 export const reportsApi = {
+  listPackages: (tenantId: string, params?: { assessment_id?: string; status?: string }) =>
+    api.get(`/tenants/${tenantId}/reports/packages`, { params }),
   createPackage: (tenantId: string, assessmentId: string, data?: object) =>
     api.post(`/tenants/${tenantId}/assessments/${assessmentId}/reports/packages`, data || {}),
   generate: (tenantId: string, packageId: string, data: object) =>
     api.post(`/tenants/${tenantId}/reports/packages/${packageId}/generate`, data),
   get: (tenantId: string, packageId: string) =>
     api.get(`/tenants/${tenantId}/reports/packages/${packageId}`),
+  listPackageFiles: (tenantId: string, packageId: string) =>
+    api.get(`/tenants/${tenantId}/reports/packages/${packageId}/files`),
   publish: (tenantId: string, packageId: string, data?: object) =>
     api.post(`/tenants/${tenantId}/reports/packages/${packageId}/publish`, data || {}),
   download: (tenantId: string, packageId: string) =>

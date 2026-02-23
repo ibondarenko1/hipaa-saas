@@ -2,15 +2,92 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Summit Range — HIPAA Readiness Platform</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <title>HIPAA Platform — Sign in</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #050d1a; color: #e2e8f0; min-height: 100vh; font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; padding: 16px; }
+      .box { background: #0a1628; border: 1px solid rgba(59,130,246,0.2); border-radius: 12px; padding: 28px; width: 100%; max-width: 360px; }
+      h1 { margin: 0 0 8px; font-size: 1.1rem; color: #f1f5f9; }
+      .sub { margin: 0 0 20px; font-size: 0.8rem; color: #94a3b8; }
+      label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 4px; }
+      input { width: 100%; padding: 10px 12px; margin-bottom: 14px; border: 1px solid rgba(59,130,246,0.3); border-radius: 8px; background: #0f2040; color: #e2e8f0; font-size: 1rem; }
+      button { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 6px; }
+      .btn-primary { background: #3b82f6; color: white; }
+      .btn-primary:hover { background: #2563eb; }
+      .btn-demo { background: #334155; color: #e2e8f0; }
+      .btn-demo:hover { background: #475569; }
+      .err { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); color: #f87171; padding: 10px; border-radius: 8px; font-size: 0.9rem; margin-bottom: 14px; display: none; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      (function() {
+        var path = window.location.pathname.replace(/\/$/, '') || '/';
+        if (path === '/' || path === '/login') {
+          var root = document.getElementById('root');
+          root.innerHTML = '<div class="box">' +
+            '<h1>HIPAA Readiness Platform</h1>' +
+            '<p class="sub">Sign in</p>' +
+            '<div id="err" class="err"></div>' +
+            '<form id="f">' +
+            '<label>Email</label><input type="email" id="email" placeholder="you@example.com" required autocomplete="email">' +
+            '<label>Password</label><input type="password" id="pw" placeholder="••••••" required autocomplete="current-password">' +
+            '<button type="submit" class="btn-primary">Sign in</button>' +
+            '<button type="button" class="btn-demo" id="demo">Sign in as Demo</button>' +
+            '</form></div>';
+          var form = document.getElementById('f');
+          var errEl = document.getElementById('err');
+          function showErr(msg) { errEl.textContent = msg; errEl.style.display = 'block'; }
+          function hideErr() { errEl.style.display = 'none'; }
+          function doLogin(email, password) {
+            hideErr();
+            return fetch('/api/v1/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: email, password: password })
+            }).then(function(r) {
+              if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail || 'Login failed'); });
+              return r.json();
+            }).then(function(data) {
+              var token = data.access_token;
+              if (!token) throw new Error('No token');
+              return fetch('/api/v1/auth/me', { headers: { 'Authorization': 'Bearer ' + token } })
+                .then(function(me) { return me.json(); })
+                .then(function(user) {
+                  localStorage.setItem('token', token);
+                  localStorage.setItem('user', JSON.stringify(user));
+                  window.location.href = '/internal';
+                });
+            }).catch(function(e) { showErr(e.message || 'Login failed'); });
+          }
+          form.onsubmit = function(e) {
+            e.preventDefault();
+            doLogin(document.getElementById('email').value.trim(), document.getElementById('pw').value);
+          };
+          document.getElementById('demo').onclick = function() {
+            document.getElementById('email').value = 'admin@summitrange.com';
+            document.getElementById('pw').value = 'Admin1234!';
+            doLogin('admin@summitrange.com', 'Admin1234!');
+          };
+        } else {
+          var root = document.getElementById('root');
+          root.innerHTML = '<div style="padding:40px;text-align:center;color:#94a3b8;font-size:16px;">Loading app…</div>';
+          var s = document.createElement('script');
+          s.type = 'module';
+          s.src = '/src/main.tsx';
+          s.onerror = function() {
+            root.innerHTML = '<div style="padding:40px;max-width:400px;margin:0 auto;color:#f87171;">Failed to load app. Open F12 → Console for errors.</div>';
+          };
+          document.body.appendChild(s);
+          setTimeout(function() {
+            if (root.innerText.indexOf('Loading app') !== -1) {
+              root.innerHTML = '<div style="padding:40px;max-width:500px;margin:0 auto;color:#94a3b8;">Still loading? Open F12 → Console and check for red errors. Tell me the error text.</div>';
+            }
+          }, 5000);
+        }
+      })();
+    </script>
   </body>
 </html>

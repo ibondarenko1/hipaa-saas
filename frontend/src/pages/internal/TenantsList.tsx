@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { Building2, Plus, Search, ArrowRight } from 'lucide-react'
 import { tenantsApi } from '../../services/api'
 import { TenantDTO } from '../../types'
@@ -8,6 +8,7 @@ import { format } from 'date-fns'
 
 export default function TenantsList() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [tenants, setTenants] = useState<TenantDTO[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -22,6 +23,13 @@ export default function TenantsList() {
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    if ((location.state as { openCreate?: boolean })?.openCreate) {
+      setShowCreate(true)
+      navigate(location.pathname, { replace: true, state: {} })
+    }
+  }, [location.state, location.pathname, navigate])
 
   const createTenant = async () => {
     setCreating(true)

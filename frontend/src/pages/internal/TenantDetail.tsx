@@ -2,11 +2,12 @@ import React, { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import {
   Building2, Plus, Play, ArrowRight, ClipboardList,
-  CheckCircle2, Clock, AlertTriangle, ChevronRight,
-  RefreshCw, FileText, Users, Mail
+  CheckCircle2, Clock, FileText, Users, Mail,
+  BarChart3, Wrench, AlertTriangle
 } from 'lucide-react'
-import { tenantsApi, assessmentsApi, frameworksApi, engineApi } from '../../services/api'
+import { tenantsApi, assessmentsApi, frameworksApi, engineApi, reportsApi } from '../../services/api'
 import { TenantDTO, AssessmentDTO, TenantMemberDTO, FrameworkDTO } from '../../types'
+import type { ControlResultDTO, GapDTO, RemediationActionDTO } from '../../types'
 import {
   PageLoader, StatusBadge, SeverityBadge, SectionHeader,
   EmptyState, MetricCard, Modal, Alert, Spinner
@@ -21,6 +22,9 @@ export default function TenantDetail() {
   const [assessments, setAssessments] = useState<AssessmentDTO[]>([])
   const [members, setMembers] = useState<TenantMemberDTO[]>([])
   const [frameworks, setFrameworks] = useState<FrameworkDTO[]>([])
+  const [controls, setControls] = useState<ControlResultDTO[]>([])
+  const [gaps, setGaps] = useState<GapDTO[]>([])
+  const [remediation, setRemediation] = useState<RemediationActionDTO[]>([])
   const [loading, setLoading] = useState(true)
   const [showNewAssessment, setShowNewAssessment] = useState(false)
   const [showInvite, setShowInvite] = useState(false)
@@ -30,6 +34,7 @@ export default function TenantDetail() {
   const [createLoading, setCreateLoading] = useState(false)
   const [createError, setCreateError] = useState('')
   const [runningEngine, setRunningEngine] = useState<string | null>(null)
+  const [submittingId, setSubmittingId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!tenantId) return
@@ -43,6 +48,22 @@ export default function TenantDetail() {
       setAssessments(aRes.data)
       setMembers(mRes.data)
       setFrameworks(fRes.data)
+      const latest = (aRes.data as AssessmentDTO[]).find(a => a.status === 'submitted' || a.status === 'completed')
+      if (latest) {
+        Promise.all([
+          engineApi.controls(tenantId, latest.id),
+          engineApi.gaps(tenantId, latest.id),
+          engineApi.remediation(tenantId, latest.id),
+        ]).then(([cRes, gRes, rRes]) => {
+          setControls(cRes.data)
+          setGaps(gRes.data)
+          setRemediation(rRes.data)
+        }).catch(() => { setControls([]); setGaps([]); setRemediation([]) })
+      } else {
+        setControls([])
+        setGaps([])
+        setRemediation([])
+      }
     }).catch(console.error).finally(() => setLoading(false))
   }, [tenantId])
 
@@ -83,6 +104,19 @@ export default function TenantDetail() {
     }
   }
 
+  const submitForClient = async (assessmentId: string) => {
+    if (!tenantId) return
+    setSubmittingId(assessmentId)
+    try {
+      await assessmentsApi.submit(tenantId, assessmentId)
+      setAssessments(prev => prev.map(a => a.id === assessmentId ? { ...a, status: 'submitted', submitted_at: new Date().toISOString() } : a))
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || 'Submit failed')
+    } finally {
+      setSubmittingId(null)
+    }
+  }
+
   const runEngine = async (assessmentId: string) => {
     if (!tenantId) return
     setRunningEngine(assessmentId)
@@ -101,6 +135,11 @@ export default function TenantDetail() {
 
   const submitted = assessments.filter(a => a.status === 'submitted')
   const completed = assessments.filter(a => a.status === 'completed')
+  const latestSubmitted = assessments.find(a => a.status === 'submitted' || a.status === 'completed')
+  const passCount = controls.filter(c => c.status === 'Pass').length
+  const passPct = controls.length ? Math.round((passCount / controls.length) * 100) : 0
+  const criticalGaps = gaps.filter(g => g.severity === 'Critical').length
+  const highGaps = gaps.filter(g => g.severity === 'High').length
 
   return (
     <div className="max-w-5xl space-y-7">
@@ -128,6 +167,106 @@ export default function TenantDetail() {
             New Assessment
           </button>
         </div>
+      </div>
+
+      {/* Pipeline: 1. Data → 2. Gap analysis → 3. Remediation → 4. Report */}
+      <div className="card p-4">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Compliance cycle</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={latestSubmitted ? 'text-emerald-400' : 'text-slate-600'}>1. Client data</span>
+          <ArrowRight size={12} className="text-slate-600" />
+          <span className={controls.length > 0 ? 'text-emerald-400' : 'text-slate-600'}>2. Gap analysis</span>
+          <ArrowRight size={12} className="text-slate-600" />
+          <span className={remediation.length > 0 ? 'text-emerald-400' : 'text-slate-600'}>3. Remediation plan</span>
+          <ArrowRight size={12} className="text-slate-600" />
+          <span className="text-slate-600">4. Report</span>
+        </div>
+      </div>
+
+      {/* Gap Analysis block — always visible */}
+      <div className="card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <BarChart3 size={18} className="text-amber-400" />
+            <h2 className="text-sm font-semibold text-slate-200">Gap analysis</h2>
+          </div>
+          {latestSubmitted && (
+            <Link
+              to={`/internal/tenants/${tenantId}/assessments/${latestSubmitted.id}/results`}
+              className="btn-secondary text-xs"
+            >
+              Full results <ArrowRight size={12} />
+            </Link>
+          )}
+        </div>
+        {!latestSubmitted ? (
+          <p className="text-sm text-slate-500">Create an assessment, have the client fill the questionnaire and submit, then click <strong>Run engine</strong> below to generate gap analysis.</p>
+        ) : controls.length === 0 ? (
+          <div>
+            <p className="text-sm text-slate-500 mb-2">Run the compliance engine to generate gap analysis from client answers.</p>
+            <button
+              onClick={() => runEngine(latestSubmitted.id)}
+              disabled={runningEngine === latestSubmitted.id}
+              className="btn-primary text-xs"
+            >
+              {runningEngine === latestSubmitted.id ? <><Spinner className="w-3 h-3 inline" /> Running…</> : <><Play size={12} /> Run engine</>}
+            </button>
+          </div>
+        ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="rounded-lg border border-blue-500/15 bg-blue-500/05 p-3">
+                <p className="text-2xl font-bold text-slate-100">{passPct}%</p>
+                <p className="text-xs text-slate-500">Pass rate</p>
+              </div>
+              <div className="rounded-lg border border-navy-700 p-3">
+                <p className="text-2xl font-bold text-slate-200">{controls.filter(c => c.status === 'Pass').length}</p>
+                <p className="text-xs text-slate-500">Pass</p>
+              </div>
+              <div className="rounded-lg border border-amber-500/20 bg-amber-500/05 p-3">
+                <p className="text-2xl font-bold text-amber-400">{gaps.length}</p>
+                <p className="text-xs text-slate-500">Gaps</p>
+              </div>
+              <div className="rounded-lg border border-red-500/20 bg-red-500/05 p-3">
+                <p className="text-2xl font-bold text-red-400">{criticalGaps + highGaps}</p>
+                <p className="text-xs text-slate-500">Critical + High</p>
+              </div>
+            </div>
+        )}
+      </div>
+
+      {/* Remediation plan block — always visible */}
+      <div className="card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Wrench size={18} className="text-violet-400" />
+            <h2 className="text-sm font-semibold text-slate-200">Remediation plan</h2>
+          </div>
+          {latestSubmitted && (
+            <Link
+              to={`/internal/tenants/${tenantId}/assessments/${latestSubmitted.id}/results`}
+              className="btn-ghost text-xs text-violet-400"
+            >
+              View full plan
+            </Link>
+          )}
+        </div>
+        {remediation.length === 0 ? (
+          <p className="text-sm text-slate-500">Remediation actions appear after you run the compliance engine (gap analysis). Use the <strong>Run engine</strong> button above or in the Assessments table.</p>
+        ) : (
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {remediation.slice(0, 5).map((r, i) => (
+                <div key={r.id} className="flex items-start gap-2 py-2 border-b border-blue-500/06 last:border-0">
+                  <span className="text-xs font-mono text-slate-500 w-6">{i + 1}.</span>
+                  <p className="text-sm text-slate-300 line-clamp-2">{r.description}</p>
+                </div>
+              ))}
+              {remediation.length > 5 && latestSubmitted && (
+                <Link to={`/internal/tenants/${tenantId}/assessments/${latestSubmitted.id}/results`} className="text-xs text-blue-400">
+                  +{remediation.length - 5} more actions →
+                </Link>
+              )}
+            </div>
+        )}
       </div>
 
       {/* Metrics */}
@@ -195,6 +334,15 @@ export default function TenantDetail() {
                     </td>
                     <td>
                       <div className="flex items-center gap-2">
+                        {(a.status === 'draft' || a.status === 'in_progress') && (
+                          <button
+                            onClick={() => submitForClient(a.id)}
+                            disabled={submittingId === a.id}
+                            className="btn-secondary text-xs py-1"
+                          >
+                            {submittingId === a.id ? <Spinner className="w-3 h-3" /> : 'Submit for client'}
+                          </button>
+                        )}
                         {a.status === 'submitted' && (
                           <button
                             onClick={() => runEngine(a.id)}

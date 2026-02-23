@@ -12,7 +12,10 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/login", response_model=TokenResponse)
 async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == body.email))
+    email = (body.email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(body.password, user.password_hash):
@@ -51,6 +54,9 @@ async def me(
     )
     memberships = result.scalars().all()
 
-    dto = UserWithMemberships.model_validate(current_user)
-    dto.memberships = [MembershipBrief(tenant_id=m.tenant_id, role=m.role) for m in memberships]
-    return dto
+    # Build from UserDTO to avoid touching User.memberships (lazy load in async)
+    base = UserDTO.model_validate(current_user)
+    return UserWithMemberships(
+        **base.model_dump(),
+        memberships=[MembershipBrief(tenant_id=m.tenant_id, role=m.role) for m in memberships],
+    )

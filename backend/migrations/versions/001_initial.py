@@ -33,7 +33,7 @@ def upgrade() -> None:
     # ── users ──────────────────────────────────────────────────────────────────
     op.create_table(
         "users",
-        sa.Column("id", sa.String(), primary_key=True),
+        sa.Column("id", _UUID, primary_key=True),
         sa.Column("email", sa.Text(), unique=True, nullable=False),
         sa.Column("full_name", sa.Text(), nullable=True),
         sa.Column("password_hash", sa.Text(), nullable=False),
@@ -46,9 +46,9 @@ def upgrade() -> None:
     # ── tenant_members ─────────────────────────────────────────────────────────
     op.create_table(
         "tenant_members",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("user_id", sa.String(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("tenant_id", _UUID, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("user_id", _UUID, sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("role", sa.Text(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.UniqueConstraint("tenant_id", "user_id", name="uq_tenant_members"),
@@ -59,7 +59,7 @@ def upgrade() -> None:
     # ── frameworks ─────────────────────────────────────────────────────────────
     op.create_table(
         "frameworks",
-        sa.Column("id", sa.String(), primary_key=True),
+        sa.Column("id", _UUID, primary_key=True),
         sa.Column("code", sa.Text(), unique=True, nullable=False),
         sa.Column("name", sa.Text(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
@@ -68,8 +68,8 @@ def upgrade() -> None:
     # ── controlset_versions ────────────────────────────────────────────────────
     op.create_table(
         "controlset_versions",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("framework_id", sa.String(), sa.ForeignKey("frameworks.id"), nullable=False),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("framework_id", _UUID, sa.ForeignKey("frameworks.id"), nullable=False),
         sa.Column("version", sa.Text(), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
@@ -81,9 +81,9 @@ def upgrade() -> None:
     # ── controls ───────────────────────────────────────────────────────────────
     op.create_table(
         "controls",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("framework_id", sa.String(), sa.ForeignKey("frameworks.id"), nullable=False),
-        sa.Column("controlset_version_id", sa.String(), sa.ForeignKey("controlset_versions.id"), nullable=False),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("framework_id", _UUID, sa.ForeignKey("frameworks.id"), nullable=False),
+        sa.Column("controlset_version_id", _UUID, sa.ForeignKey("controlset_versions.id"), nullable=False),
         sa.Column("control_code", sa.Text(), nullable=False),
         sa.Column("title", sa.Text(), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
@@ -100,8 +100,8 @@ def upgrade() -> None:
     # ── ruleset_versions ───────────────────────────────────────────────────────
     op.create_table(
         "ruleset_versions",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("framework_id", sa.String(), sa.ForeignKey("frameworks.id"), nullable=False),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("framework_id", _UUID, sa.ForeignKey("frameworks.id"), nullable=False),
         sa.Column("version", sa.Text(), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
@@ -113,9 +113,9 @@ def upgrade() -> None:
     # ── rules ──────────────────────────────────────────────────────────────────
     op.create_table(
         "rules",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("ruleset_version_id", sa.String(), sa.ForeignKey("ruleset_versions.id"), nullable=False),
-        sa.Column("control_id", sa.String(), sa.ForeignKey("controls.id"), nullable=False),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("ruleset_version_id", _UUID, sa.ForeignKey("ruleset_versions.id"), nullable=False),
+        sa.Column("control_id", _UUID, sa.ForeignKey("controls.id"), nullable=False),
         sa.Column("pattern", sa.Text(), nullable=False),
         sa.Column("logic", postgresql.JSONB(), nullable=True),
         sa.Column("remediation_template_id", sa.Text(), nullable=True),
@@ -127,9 +127,9 @@ def upgrade() -> None:
     # ── questions ──────────────────────────────────────────────────────────────
     op.create_table(
         "questions",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("framework_id", sa.String(), sa.ForeignKey("frameworks.id"), nullable=False),
-        sa.Column("control_id", sa.String(), sa.ForeignKey("controls.id"), nullable=False),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("framework_id", _UUID, sa.ForeignKey("frameworks.id"), nullable=False),
+        sa.Column("control_id", _UUID, sa.ForeignKey("controls.id"), nullable=False),
         sa.Column("question_code", sa.Text(), nullable=False),
         sa.Column("text", sa.Text(), nullable=False),
         sa.Column("answer_type", sa.Text(), nullable=False),
@@ -144,13 +144,13 @@ def upgrade() -> None:
     # ── assessments ────────────────────────────────────────────────────────────
     op.create_table(
         "assessments",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("framework_id", sa.String(), sa.ForeignKey("frameworks.id"), nullable=False),
-        sa.Column("controlset_version_id", sa.String(), sa.ForeignKey("controlset_versions.id"), nullable=False),
-        sa.Column("ruleset_version_id", sa.String(), sa.ForeignKey("ruleset_versions.id"), nullable=False),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("tenant_id", _UUID, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("framework_id", _UUID, sa.ForeignKey("frameworks.id"), nullable=False),
+        sa.Column("controlset_version_id", _UUID, sa.ForeignKey("controlset_versions.id"), nullable=False),
+        sa.Column("ruleset_version_id", _UUID, sa.ForeignKey("ruleset_versions.id"), nullable=False),
         sa.Column("status", sa.Text(), nullable=False, server_default="draft"),
-        sa.Column("created_by_user_id", sa.String(), sa.ForeignKey("users.id"), nullable=False),
+        sa.Column("created_by_user_id", _UUID, sa.ForeignKey("users.id"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("submitted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
@@ -163,12 +163,12 @@ def upgrade() -> None:
     # ── answers ────────────────────────────────────────────────────────────────
     op.create_table(
         "answers",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("assessment_id", sa.String(), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("question_id", sa.String(), sa.ForeignKey("questions.id"), nullable=False),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("tenant_id", _UUID, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("assessment_id", _UUID, sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("question_id", _UUID, sa.ForeignKey("questions.id"), nullable=False),
         sa.Column("value", postgresql.JSONB(), nullable=False),
-        sa.Column("updated_by_user_id", sa.String(), sa.ForeignKey("users.id"), nullable=True),
+        sa.Column("updated_by_user_id", _UUID, sa.ForeignKey("users.id"), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.UniqueConstraint("assessment_id", "question_id", name="uq_answer"),
@@ -179,9 +179,9 @@ def upgrade() -> None:
     # ── evidence_files ─────────────────────────────────────────────────────────
     op.create_table(
         "evidence_files",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("uploaded_by_user_id", sa.String(), sa.ForeignKey("users.id"), nullable=False),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("tenant_id", _UUID, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("uploaded_by_user_id", _UUID, sa.ForeignKey("users.id"), nullable=False),
         sa.Column("file_name", sa.Text(), nullable=False),
         sa.Column("content_type", sa.Text(), nullable=False),
         sa.Column("size_bytes", sa.BigInteger(), nullable=False),
@@ -195,12 +195,12 @@ def upgrade() -> None:
     # ── evidence_links ─────────────────────────────────────────────────────────
     op.create_table(
         "evidence_links",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("assessment_id", sa.String(), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("evidence_file_id", sa.String(), sa.ForeignKey("evidence_files.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("control_id", sa.String(), sa.ForeignKey("controls.id"), nullable=True),
-        sa.Column("question_id", sa.String(), sa.ForeignKey("questions.id"), nullable=True),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("tenant_id", _UUID, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("assessment_id", _UUID, sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("evidence_file_id", _UUID, sa.ForeignKey("evidence_files.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("control_id", _UUID, sa.ForeignKey("controls.id"), nullable=True),
+        sa.Column("question_id", _UUID, sa.ForeignKey("questions.id"), nullable=True),
         sa.Column("note", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
@@ -212,10 +212,10 @@ def upgrade() -> None:
     # ── control_results ────────────────────────────────────────────────────────
     op.create_table(
         "control_results",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("assessment_id", sa.String(), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("control_id", sa.String(), sa.ForeignKey("controls.id"), nullable=False),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("tenant_id", _UUID, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("assessment_id", _UUID, sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("control_id", _UUID, sa.ForeignKey("controls.id"), nullable=False),
         sa.Column("status", sa.Text(), nullable=False),
         sa.Column("severity", sa.Text(), nullable=False),
         sa.Column("rationale", sa.Text(), nullable=True),
@@ -228,10 +228,10 @@ def upgrade() -> None:
     # ── gaps ───────────────────────────────────────────────────────────────────
     op.create_table(
         "gaps",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("assessment_id", sa.String(), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("control_id", sa.String(), sa.ForeignKey("controls.id"), nullable=False),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("tenant_id", _UUID, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("assessment_id", _UUID, sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("control_id", _UUID, sa.ForeignKey("controls.id"), nullable=False),
         sa.Column("status_source", sa.Text(), nullable=False),
         sa.Column("severity", sa.Text(), nullable=False),
         sa.Column("description", sa.Text(), nullable=False),
@@ -244,10 +244,10 @@ def upgrade() -> None:
     # ── risks ──────────────────────────────────────────────────────────────────
     op.create_table(
         "risks",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("assessment_id", sa.String(), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("gap_id", sa.String(), sa.ForeignKey("gaps.id", ondelete="CASCADE"), unique=True, nullable=False),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("tenant_id", _UUID, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("assessment_id", _UUID, sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("gap_id", _UUID, sa.ForeignKey("gaps.id", ondelete="CASCADE"), unique=True, nullable=False),
         sa.Column("severity", sa.Text(), nullable=False),
         sa.Column("description", sa.Text(), nullable=False),
         sa.Column("rationale", sa.Text(), nullable=True),
@@ -258,10 +258,10 @@ def upgrade() -> None:
     # ── remediation_actions ────────────────────────────────────────────────────
     op.create_table(
         "remediation_actions",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("assessment_id", sa.String(), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("gap_id", sa.String(), sa.ForeignKey("gaps.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("tenant_id", _UUID, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("assessment_id", _UUID, sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("gap_id", _UUID, sa.ForeignKey("gaps.id", ondelete="CASCADE"), nullable=False),
         sa.Column("priority", sa.Text(), nullable=False),
         sa.Column("effort", sa.Text(), nullable=False),
         sa.Column("remediation_type", sa.Text(), nullable=False),
@@ -275,12 +275,12 @@ def upgrade() -> None:
     # ── report_packages ────────────────────────────────────────────────────────
     op.create_table(
         "report_packages",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("assessment_id", sa.String(), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("tenant_id", _UUID, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("assessment_id", _UUID, sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
         sa.Column("package_version", sa.Integer(), nullable=False, server_default="1"),
         sa.Column("status", sa.Text(), nullable=False, server_default="draft"),
-        sa.Column("generated_by_user_id", sa.String(), sa.ForeignKey("users.id"), nullable=True),
+        sa.Column("generated_by_user_id", _UUID, sa.ForeignKey("users.id"), nullable=True),
         sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
@@ -290,9 +290,9 @@ def upgrade() -> None:
     # ── report_files ───────────────────────────────────────────────────────────
     op.create_table(
         "report_files",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("package_id", sa.String(), sa.ForeignKey("report_packages.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("package_id", _UUID, sa.ForeignKey("report_packages.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("tenant_id", _UUID, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
         sa.Column("file_type", sa.Text(), nullable=False),
         sa.Column("format", sa.Text(), nullable=False),
         sa.Column("storage_key", sa.Text(), nullable=False),
@@ -305,9 +305,9 @@ def upgrade() -> None:
     # ── audit_events ───────────────────────────────────────────────────────────
     op.create_table(
         "audit_events",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True),
-        sa.Column("user_id", sa.String(), sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("tenant_id", _UUID, sa.ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True),
+        sa.Column("user_id", _UUID, sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
         sa.Column("event_type", sa.Text(), nullable=False),
         sa.Column("entity_type", sa.Text(), nullable=True),
         sa.Column("entity_id", sa.Text(), nullable=True),

@@ -17,7 +17,8 @@ import io
 import uuid
 import zipfile
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.db.session import get_db
@@ -29,7 +30,7 @@ from app.models.models import (
 from app.core.auth import get_current_user, get_membership, require_internal
 from app.models.models import User
 from app.schemas.schemas import (
-    CreateReportPackageRequest, ReportPackageDTO,
+    CreateReportPackageRequest, ReportPackageDTO, ReportFileDTO,
     GenerateReportPackageRequest, GenerateReportPackageResponse, ReportFileItem,
     PublishReportPackageRequest, PublishReportPackageResponse,
     DownloadUrlResponse,
@@ -278,6 +279,28 @@ async def generate_report_package(
         raise HTTPException(status_code=500, detail=f"Report generation failed: {e}")
 
 
+# ── List Packages ──────────────────────────────────────────────────────────────
+
+@router.get("/reports/packages", response_model=list[ReportPackageDTO])
+async def list_report_packages(
+    tenant_id: str,
+    assessment_id: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    membership: TenantMember = Depends(get_membership),
+    db: AsyncSession = Depends(get_db),
+):
+    q = select(ReportPackage).where(ReportPackage.tenant_id == tenant_id)
+    if assessment_id:
+        q = q.where(ReportPackage.assessment_id == assessment_id)
+    if status:
+        q = q.where(ReportPackage.status == status)
+    if membership.role == "client_user":
+        q = q.where(ReportPackage.status == "published")
+    q = q.order_by(ReportPackage.package_version.desc())
+    result = await db.execute(q)
+    return [ReportPackageDTO.model_validate(p) for p in result.scalars().all()]
+
+
 # ── Get Package ────────────────────────────────────────────────────────────────
 
 @router.get("/reports/packages/{package_id}", response_model=ReportPackageDTO)
@@ -294,6 +317,24 @@ async def get_report_package(
         raise HTTPException(status_code=404, detail="Report package not found")
 
     return ReportPackageDTO.model_validate(pkg)
+
+
+# ── List files in package ─────────────────────────────────────────────────────
+
+@router.get("/reports/packages/{package_id}/files", response_model=list[ReportFileDTO])
+async def list_report_package_files(
+    tenant_id: str,
+    package_id: str,
+    membership: TenantMember = Depends(get_membership),
+    db: AsyncSession = Depends(get_db),
+):
+    pkg = await _get_package_or_404(package_id, tenant_id, db)
+    if membership.role == "client_user" and pkg.status != "published":
+        raise HTTPException(status_code=404, detail="Report package not found")
+    result = await db.execute(
+        select(ReportFile).where(ReportFile.package_id == package_id).order_by(ReportFile.file_type)
+    )
+    return [ReportFileDTO.model_validate(f) for f in result.scalars().all()]
 
 
 # ── Publish ────────────────────────────────────────────────────────────────────
