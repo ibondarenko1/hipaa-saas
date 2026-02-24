@@ -1,165 +1,309 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
-  ClipboardList, FileText, ShieldCheck, CheckCircle2,
-  ArrowRight, AlertTriangle, Clock, Upload, Send
+  ClipboardList, FileText, CheckCircle2, AlertTriangle, Clock,
+  ArrowRight, Upload, Send, Activity, Users, Award
 } from 'lucide-react'
-import { assessmentsApi, tenantsApi } from '../../services/api'
-import { AssessmentDTO, AssessmentProgress, TenantDTO } from '../../types'
+import { assessmentsApi, tenantsApi, evidenceApi, auditApi, workforceApi } from '../../services/api'
+import { AssessmentDTO, AssessmentProgress, TenantDTO, AuditEventDTO } from '../../types'
+import { hipaaEvidenceData } from '../../data/hipaaEvidence'
 import {
-  PageLoader, StatusBadge, ProgressBar, MetricCard, EmptyState
+  StatusBadge, ProgressBar, EmptyState, ProgressRing, PageLoader
 } from '../../components/ui'
 import { format } from 'date-fns'
+import clsx from 'clsx'
 
-function StatusStep({
-  label, done, active, icon: Icon
-}: { label: string; done: boolean; active: boolean; icon: React.ElementType }) {
-  return (
-    <div className={`flex items-center gap-2.5 p-3 rounded-lg transition-all ${
-      done ? 'bg-emerald-500/08 border border-emerald-500/15' :
-      active ? 'bg-blue-500/08 border border-blue-500/20' :
-      'bg-navy-800/30 border border-transparent'
-    }`}>
-      <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${
-        done ? 'bg-emerald-500/20 text-emerald-400' :
-        active ? 'bg-blue-500/20 text-blue-400' :
-        'bg-slate-700/50 text-slate-600'
-      }`}>
-        {done ? <CheckCircle2 size={14} /> : <Icon size={14} />}
-      </div>
-      <p className={`text-sm font-medium ${
-        done ? 'text-emerald-400' : active ? 'text-slate-200' : 'text-slate-600'
-      }`}>{label}</p>
-    </div>
-  )
-}
+type FilterTab = 'All' | 'Needs Attention' | 'Complete' | 'Not Started'
 
 export default function ClientOverview() {
   const { tenantId } = useParams<{ tenantId: string }>()
+  const [tenant, setTenant] = useState<TenantDTO | null>(null)
   const [assessment, setAssessment] = useState<AssessmentDTO | null>(null)
   const [progress, setProgress] = useState<AssessmentProgress | null>(null)
-  const [tenant, setTenant] = useState<TenantDTO | null>(null)
+  const [evidenceFiles, setEvidenceFiles] = useState<Array<{ id: string; file_name: string; admin_comment?: string | null }>>([])
+  const [evidenceLinks, setEvidenceLinks] = useState<Array<{ control_id: string | null }>>([])
+  const [auditEvents, setAuditEvents] = useState<AuditEventDTO[]>([])
+  const [workforceStats, setWorkforceStats] = useState<{ total_employees: number; completed_assignments: number; total_assignments: number; overdue_assignments: number } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [controlFilter, setControlFilter] = useState<FilterTab>('All')
 
   useEffect(() => {
     if (!tenantId) return
     Promise.all([
       tenantsApi.get(tenantId),
       assessmentsApi.list(tenantId),
-    ]).then(async ([tRes, aRes]) => {
-      setTenant(tRes.data)
-      const all: AssessmentDTO[] = aRes.data
-      const active = all.find(a => a.status !== 'completed') || all[0]
-      if (!active) { setLoading(false); return }
-      setAssessment(active)
-      try {
-        const pRes = await assessmentsApi.progress(tenantId, active.id)
-        setProgress(pRes.data)
-      } catch {}
-    }).catch(console.error).finally(() => setLoading(false))
+      evidenceApi.list(tenantId),
+      auditApi.list(tenantId, { limit: 5 }),
+      workforceApi.getStats(tenantId).catch(() => ({ data: null })),
+    ])
+      .then(async ([tRes, aRes, eRes, auditRes, wRes]) => {
+        setTenant(tRes.data)
+        setEvidenceFiles(eRes.data)
+        setAuditEvents(Array.isArray(auditRes.data) ? auditRes.data : [])
+        setWorkforceStats(wRes?.data ?? null)
+        const all: AssessmentDTO[] = aRes.data
+        const active = all.find((a) => a.status !== 'completed') || all[0]
+        setAssessment(active ?? null)
+        if (active) {
+          try {
+            const [pRes, linksRes] = await Promise.all([
+              assessmentsApi.progress(tenantId, active.id),
+              evidenceApi.listLinks(tenantId, active.id),
+            ])
+            setProgress(pRes.data)
+            setEvidenceLinks(linksRes.data ?? [])
+          } catch {}
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }, [tenantId])
 
   if (loading) return <PageLoader />
 
+  const controls = hipaaEvidenceData.controls
+  const needAttentionCount = evidenceFiles.filter((f) => (f as { admin_comment?: string | null }).admin_comment).length
   const pct = progress ? Math.round(progress.answered_ratio * 100) : 0
   const status = assessment?.status
 
-  const steps = [
-    { label: 'Assessment Created', done: !!assessment, active: false, icon: ClipboardList },
-    { label: 'Questionnaire In Progress', done: status === 'submitted' || status === 'completed', active: status === 'in_progress' || status === 'draft', icon: ClipboardList },
-    { label: 'Submitted for Review', done: status === 'submitted' || status === 'completed', active: false, icon: Send },
-    { label: 'Report Available', done: status === 'completed', active: false, icon: FileText },
-  ]
+  const controlsWithEvidence = new Set(
+    evidenceLinks.map((l) => l.hipaa_control_id ?? l.control_id).filter(Boolean)
+  )
+  const completeCount = controls.length ? Math.min(controls.length, controlsWithEvidence.size) : 0
+  const notStartedCount = Math.max(0, controls.length - completeCount)
+
+  const adminCount = progress?.total_questions ?? 0
+  const adminAnswered = Object.entries(progress?.controls ?? {}).reduce((sum, [, n]) => sum + n, 0)
+  const physicalTotal = 8
+  const technicalTotal = 10
+  const administrativeTotal = 22
+
+  const nextActions: Array<{ priority: number; badge: string; text: string; to: string; btn: string }> = []
+  if (needAttentionCount > 0) {
+    nextActions.push({
+      priority: 1,
+      badge: 'Needs Attention',
+      text: `${needAttentionCount} document(s) need updates from your reviewer`,
+      to: `/client/${tenantId}/evidence`,
+      btn: 'Review Documents',
+    })
+  }
+  if (pct < 100 && status !== 'submitted' && status !== 'completed') {
+    nextActions.push({
+      priority: 2,
+      text: `Continue your assessment — ${progress ? progress.total_questions - (progress.answered_count ?? 0) : 0} questions remaining`,
+      to: `/client/${tenantId}/assessment`,
+      btn: 'Continue Assessment',
+      badge: '',
+    })
+  }
+  if (pct >= 100 && status === 'in_progress') {
+    nextActions.push({
+      priority: 3,
+      badge: 'Ready!',
+      text: "You're ready to submit for review",
+      to: `/client/${tenantId}/assessment`,
+      btn: 'Submit for Review',
+    })
+  }
+  if (nextActions.length === 0) {
+    nextActions.push({
+      priority: 4,
+      badge: '',
+      text: 'Assessment complete. Awaiting final review from Summit Range.',
+      to: `/client/${tenantId}/reports`,
+      btn: 'View Reports',
+    })
+  }
+
+  const getControlStatus = (controlId: string): 'complete' | 'in_review' | 'needs_update' | 'not_started' => {
+    const hasEvidence = evidenceLinks.some(
+      (l) => (l.hipaa_control_id ?? l.control_id) === controlId
+    )
+    if (!hasEvidence) return 'not_started'
+    const fileWithComment = evidenceFiles.find((f) => (f as { admin_comment?: string | null }).admin_comment)
+    if (fileWithComment) return 'needs_update'
+    return 'in_review'
+  }
+
+  const filteredControls =
+    controlFilter === 'All'
+      ? controls
+      : controlFilter === 'Needs Attention'
+        ? controls.filter((c) => getControlStatus(c.controlId) === 'needs_update')
+        : controlFilter === 'Complete'
+          ? controls.filter((c) => getControlStatus(c.controlId) === 'complete')
+          : controls.filter((c) => getControlStatus(c.controlId) === 'not_started')
 
   return (
-    <div className="max-w-3xl space-y-6">
-      {/* Welcome */}
-      <div>
-        <h1 className="text-xl font-bold text-slate-100">
-          {tenant?.name || 'Your Organization'}
-        </h1>
-        <p className="text-sm text-slate-500 mt-0.5">
-          HIPAA Security Rule Readiness — Client Portal
-        </p>
-      </div>
-
-      {/* Status flow */}
-      <div className="card p-5">
-        <p className="text-sm font-semibold text-slate-300 mb-3">Assessment Progress</p>
-        <div className="space-y-2">
-          {steps.map((step, i) => (
-            <StatusStep key={i} {...step} />
-          ))}
-        </div>
-      </div>
-
-      {/* Active assessment card */}
-      {assessment ? (
-        <div className="card p-5 space-y-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-semibold text-slate-200">Current Assessment</p>
-              <div className="flex items-center gap-2 mt-1">
-                <StatusBadge status={assessment.status} />
-                <span className="text-xs text-slate-600">
-                  Created {format(new Date(assessment.created_at), 'MMM d, yyyy')}
-                </span>
-              </div>
-            </div>
-            {(status === 'in_progress' || status === 'draft') && (
-              <Link to={`/client/${tenantId}/assessment`} className="btn-primary text-xs">
-                Continue <ArrowRight size={12} />
-              </Link>
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Card 1 — Overall Status */}
+        <div className="lg:col-span-2 card p-5">
+          <h1 className="text-xl font-bold text-slate-100">{tenant?.name ?? 'Your Organization'}</h1>
+          <p className="text-sm text-slate-500 mt-0.5">HIPAA Readiness Assessment</p>
+          <div className="flex flex-wrap gap-3 mt-4">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm">
+              <CheckCircle2 size={14} /> {completeCount} Controls Complete
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm">
+              <Clock size={14} /> {notStartedCount} Not Started
+            </span>
+            {needAttentionCount > 0 && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                <AlertTriangle size={14} /> {needAttentionCount} Need Attention
+              </span>
             )}
           </div>
+        </div>
 
-          {progress && (
-            <div className="space-y-2">
-              <div className="flex justify-between text-xs">
-                <span className="text-slate-400">Questionnaire completion</span>
-                <span className="font-mono text-slate-300">{pct}%</span>
+        {/* Card 2 — Progress */}
+        <div className="card p-5">
+          <h2 className="text-base font-semibold text-slate-200 mb-4">Assessment Progress</h2>
+          <div className="flex flex-col items-center">
+            <div className="relative inline-flex">
+              <ProgressRing value={pct} size={120} strokeWidth={8} color="#10b981" />
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-2xl font-bold text-slate-100">{pct}%</span>
+                <span className="text-xs text-slate-500">of controls addressed</span>
               </div>
-              <ProgressBar
-                value={pct}
-                color={pct >= 70 ? 'bg-emerald-500' : 'bg-blue-500'}
-              />
-              <div className="flex items-center justify-between text-xs text-slate-500">
-                <span>{progress.answered_count} / {progress.total_questions} questions answered</span>
-                {pct < 70 && status === 'in_progress' && (
-                  <span className="text-amber-400">
-                    <AlertTriangle size={11} className="inline mr-1" />
-                    {70 - pct}% more needed to submit
+            </div>
+            <div className="w-full mt-4 space-y-2">
+              <div className="flex justify-between text-xs">
+                <span className="text-blue-400">Administrative</span>
+                <span>{adminAnswered}/{adminCount}</span>
+              </div>
+              <ProgressBar value={adminCount ? (adminAnswered / adminCount) * 100 : 0} color="bg-blue-500" />
+              <div className="flex justify-between text-xs text-slate-500">
+                <span className="text-amber-400">Physical</span>
+                <span>— / {physicalTotal}</span>
+              </div>
+              <ProgressBar value={0} color="bg-amber-500" />
+              <div className="flex justify-between text-xs text-slate-500">
+                <span className="text-emerald-400">Technical</span>
+                <span>— / {technicalTotal}</span>
+              </div>
+              <ProgressBar value={0} color="bg-emerald-500" />
+            </div>
+          </div>
+        </div>
+
+        {/* Card 2b — Workforce Compliance */}
+        {workforceStats && (
+          <div className="card p-5">
+            <h2 className="text-base font-semibold text-slate-200 mb-4">Workforce Compliance</h2>
+            <div className="flex flex-wrap gap-3 mb-3">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-700/50 text-slate-300 text-sm">
+                <Users size={14} /> {workforceStats.total_employees} employees
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 text-sm">
+                <Award size={14} /> {workforceStats.completed_assignments}/{workforceStats.total_assignments} training completed
+              </span>
+              {workforceStats.overdue_assignments > 0 && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 text-sm">
+                  <AlertTriangle size={14} /> {workforceStats.overdue_assignments} overdue
+                </span>
+              )}
+            </div>
+            <Link to={`/client/${tenantId}/workforce`} className="btn-primary text-xs inline-flex items-center gap-1">
+              Manage workforce <ArrowRight size={12} />
+            </Link>
+          </div>
+        )}
+
+        {/* Card 3 — Next Actions */}
+        <div className="card p-5">
+          <h2 className="text-base font-semibold text-slate-200 mb-4">What to do next</h2>
+          <div className="space-y-3">
+            {nextActions.slice(0, 3).map((action, i) => (
+              <div key={i} className="p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
+                {action.badge && (
+                  <span
+                    className={clsx(
+                      'text-xs font-medium px-2 py-0.5 rounded',
+                      action.badge === 'Needs Attention' && 'bg-red-500/20 text-red-400',
+                      action.badge === 'Ready!' && 'bg-emerald-500/20 text-emerald-400'
+                    )}
+                  >
+                    {action.badge}
                   </span>
                 )}
+                <p className="text-sm text-slate-300 mt-1">{action.text}</p>
+                <Link to={action.to} className="btn-primary text-xs mt-2 inline-flex">
+                  {action.btn} <ArrowRight size={12} className="ml-1" />
+                </Link>
               </div>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
-      ) : (
-        <div className="card">
-          <EmptyState
-            icon={<Clock size={22} />}
-            title="Awaiting assessment setup"
-            description="Summit Range Consulting will create your HIPAA assessment. You'll receive access shortly."
-          />
-        </div>
-      )}
+      </div>
 
-      {/* Quick links */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { to: 'assessment', icon: ClipboardList, label: 'Questionnaire', desc: 'Answer HIPAA controls', color: 'text-blue-400 bg-blue-500/10 border-blue-500/15' },
-          { to: 'evidence', icon: Upload, label: 'Evidence', desc: 'Upload documentation', color: 'text-violet-400 bg-violet-500/10 border-violet-500/15' },
-          { to: 'reports', icon: FileText, label: 'Reports', desc: 'Download results', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/15' },
-        ].map(item => (
-          <Link key={item.to} to={`/client/${tenantId}/${item.to}`} className="card-hover p-4">
-            <div className={`w-9 h-9 rounded-xl border flex items-center justify-center mb-3 ${item.color}`}>
-              <item.icon size={16} />
-            </div>
-            <p className="text-sm font-semibold text-slate-200">{item.label}</p>
-            <p className="text-xs text-slate-500 mt-0.5">{item.desc}</p>
-          </Link>
-        ))}
+      {/* Card 4 — Controls Grid */}
+      <div className="card p-5">
+        <h2 className="text-base font-semibold text-slate-200 mb-4">Controls Status</h2>
+        <div className="flex gap-2 mb-4 flex-wrap">
+          {(['All', 'Needs Attention', 'Complete', 'Not Started'] as FilterTab[]).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setControlFilter(tab)}
+              className={clsx(
+                'px-3 py-1.5 rounded-lg text-xs font-medium',
+                controlFilter === tab
+                  ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                  : 'text-slate-500 border border-transparent hover:text-slate-300'
+              )}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+          {filteredControls.map((c) => {
+            const controlStatus = getControlStatus(c.controlId)
+            const dotColor =
+              controlStatus === 'complete'
+                ? 'bg-emerald-500'
+                : controlStatus === 'needs_update'
+                  ? 'bg-red-500'
+                  : controlStatus === 'in_review'
+                    ? 'bg-amber-500'
+                    : 'bg-slate-600'
+            return (
+              <Link
+                key={c.controlId}
+                to={`/client/${tenantId}/assessment?control=${c.controlId}`}
+                className="flex items-center gap-2 p-2 rounded-lg bg-slate-800/50 border border-slate-700/50 hover:border-blue-500/30 transition-colors"
+              >
+                <span className={clsx('w-2 h-2 rounded-full flex-shrink-0', dotColor)} />
+                <span className="text-xs text-slate-300 truncate" title={c.controlName}>
+                  {c.controlName}
+                </span>
+              </Link>
+            )
+          })}
+        </div>
+        {filteredControls.length === 0 && (
+          <p className="text-sm text-slate-500 py-4">No controls match this filter.</p>
+        )}
+      </div>
+
+      {/* Card 5 — Recent Activity */}
+      <div className="card p-5">
+        <h2 className="text-base font-semibold text-slate-200 mb-4">Recent Activity</h2>
+        {auditEvents.length === 0 ? (
+          <p className="text-sm text-slate-500">No recent activity</p>
+        ) : (
+          <ul className="space-y-2">
+            {(Array.isArray(auditEvents) ? auditEvents : []).slice(0, 5).map((ev: AuditEventDTO) => (
+              <li key={ev.id} className="flex items-center gap-2 text-sm text-slate-400">
+                <Activity size={14} className="text-slate-500 flex-shrink-0" />
+                <span>
+                  {ev.event_type?.replace(/_/g, ' ')} — {ev.entity_type ?? 'event'} {ev.created_at && format(new Date(ev.created_at), 'MMM d, HH:mm')}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   )

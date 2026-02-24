@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import (
-    String, Boolean, Text, BigInteger, DateTime, ForeignKey,
+    String, Boolean, Integer, Text, BigInteger, DateTime, ForeignKey,
     UniqueConstraint, Index, func, JSON
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -29,6 +29,15 @@ class Tenant(Base):
     industry: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     size_band: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     primary_contact_email: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    security_officer_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    security_officer_title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    security_officer_email: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    security_officer_phone: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ehr_system: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    employee_count_range: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    location_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    onboarding_step: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -125,6 +134,7 @@ class Control(Base):
     category: Mapped[str] = mapped_column(Text, nullable=False)        # Administrative|Physical|Technical|Vendor
     severity: Mapped[str] = mapped_column(Text, nullable=False)        # Low|Medium|High|Critical
     na_eligible: Mapped[bool] = mapped_column(Boolean, default=False)
+    hipaa_control_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # e.g. HIPAA-GV-01 for frontend mapping
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     framework: Mapped["Framework"] = relationship(back_populates="controls")
@@ -137,6 +147,7 @@ class Control(Base):
         Index("ix_controls_framework", "framework_id"),
         Index("ix_controls_controlset", "controlset_version_id"),
         Index("ix_controls_category", "category"),
+        Index("ix_controls_hipaa_control_id", "hipaa_control_id"),
     )
 
 
@@ -269,6 +280,8 @@ class EvidenceFile(Base):
     storage_key: Mapped[str] = mapped_column(Text, nullable=False)
     sha256: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     tags: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    admin_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status_updated_by: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     tenant: Mapped["Tenant"] = relationship(back_populates="evidence_files")
@@ -434,6 +447,24 @@ class ReportFile(Base):
     )
 
 
+# ── 6b. NOTIFICATIONS ───────────────────────────────────────────────────────────
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    tenant_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)  # null = all users
+    type: Mapped[str] = mapped_column(Text, nullable=False)  # document_request|assessment_reminder|evidence_request|training_reminder|review_complete
+    subject: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    sent_by: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    read: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (Index("ix_notifications_tenant", "tenant_id", "created_at"),)
+
+
 # ── 7. AUDIT LOG ──────────────────────────────────────────────────────────────
 
 class AuditEvent(Base):
@@ -454,3 +485,9 @@ class AuditEvent(Base):
         Index("ix_audit_events_user", "user_id"),
         Index("ix_audit_events_type", "event_type"),
     )
+
+
+# Training LMS (tables in app.models.training; import so Alembic sees them)
+from app.models.training import TrainingModule, TrainingAssignment, TrainingCompletion, TrainingQuestion  # noqa: E402
+# Workforce (employees, employee assignments, certificates; import so Alembic sees them)
+from app.models.workforce import Employee, EmployeeTrainingAssignment, TrainingCertificate, WorkforceImportLog  # noqa: E402

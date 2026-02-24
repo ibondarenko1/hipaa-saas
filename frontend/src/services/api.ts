@@ -39,16 +39,28 @@ export const authApi = {
   me: () => api.get('/auth/me'),
 }
 
+// ── Internal (admin) ────────────────────────────────────────────────────────────
+export const internalApi = {
+  seedDemoClient: () => api.post<{ tenant_id: string; tenant_name: string; client_email: string; client_password: string; message: string }>('/internal/seed-demo-client'),
+}
+
 // ── Tenants ───────────────────────────────────────────────────────────────────
 export const tenantsApi = {
   list: () => api.get('/tenants'),
   get: (id: string) => api.get(`/tenants/${id}`),
+  getSummary: (id: string) => api.get(`/tenants/${id}/summary`),
   create: (data: object) => api.post('/tenants', data),
   update: (id: string, data: object) => api.patch(`/tenants/${id}`, data),
   listMembers: (tenantId: string) => api.get(`/tenants/${tenantId}/members`),
   addMember: (tenantId: string, data: object) => api.post(`/tenants/${tenantId}/members`, data),
   updateMember: (tenantId: string, memberId: string, data: object) =>
     api.patch(`/tenants/${tenantId}/members/${memberId}`, data),
+}
+
+// ── Tenant profile (Session 2) ─────────────────────────────────────────────────
+export const tenantProfileApi = {
+  updateTenantProfile: (tenantId: string, data: object) =>
+    api.patch(`/tenants/${tenantId}`, data),
 }
 
 // ── Frameworks ────────────────────────────────────────────────────────────────
@@ -80,6 +92,8 @@ export const assessmentsApi = {
 export const answersApi = {
   list: (tenantId: string, assessmentId: string) =>
     api.get(`/tenants/${tenantId}/assessments/${assessmentId}/answers`),
+  getAnswersForControl: (tenantId: string, assessmentId: string, controlId: string) =>
+    api.get(`/tenants/${tenantId}/assessments/${assessmentId}/answers`, { params: { control_id: controlId } }),
   upsert: (tenantId: string, assessmentId: string, questionId: string, value: object) =>
     api.put(`/tenants/${tenantId}/assessments/${assessmentId}/answers/${questionId}`, { value }),
   batchUpsert: (tenantId: string, assessmentId: string, answers: object[]) =>
@@ -100,6 +114,10 @@ export const evidenceApi = {
     api.post(`/tenants/${tenantId}/assessments/${assessmentId}/evidence-links`, data),
   listLinks: (tenantId: string, assessmentId: string) =>
     api.get(`/tenants/${tenantId}/assessments/${assessmentId}/evidence-links`),
+  updateEvidenceStatus: (tenantId: string, evidenceId: string, data: { status?: string; admin_comment?: string }) =>
+    api.patch(`/tenants/${tenantId}/evidence/${evidenceId}`, data),
+  delete: (tenantId: string, evidenceId: string) =>
+    api.delete(`/tenants/${tenantId}/evidence/${evidenceId}`),
 }
 
 // ── Engine ────────────────────────────────────────────────────────────────────
@@ -136,8 +154,81 @@ export const reportsApi = {
     api.get(`/tenants/${tenantId}/reports/files/${fileId}/download-url`),
 }
 
+// ── Notifications ─────────────────────────────────────────────────────────────
+export const notificationsApi = {
+  list: (tenantId: string, params?: { unread?: boolean }) =>
+    api.get(`/tenants/${tenantId}/notifications`, { params }),
+  create: (tenantId: string, data: { type: string; subject?: string; message: string; target_user_id?: string; control_id?: string; due_date?: string }) =>
+    api.post(`/tenants/${tenantId}/notifications`, data),
+  markRead: (tenantId: string, notificationId: string) =>
+    api.patch(`/tenants/${tenantId}/notifications/${notificationId}/read`),
+}
+
 // ── Audit ─────────────────────────────────────────────────────────────────────
 export const auditApi = {
   list: (tenantId: string, params?: object) =>
     api.get(`/tenants/${tenantId}/audit-events`, { params }),
+}
+
+// ── Templates (Session 2) ──────────────────────────────────────────────────────
+export const templatesApi = {
+  getTemplatesList: (tenantId: string) =>
+    api.get(`/tenants/${tenantId}/templates`),
+  generateTemplate: (tenantId: string, controlId: string) =>
+    api.post(`/tenants/${tenantId}/templates/${controlId}`, {}, { responseType: 'blob' }),
+}
+
+// ── Training (Session 2) ───────────────────────────────────────────────────────
+export const trainingApi = {
+  getTrainingModules: (tenantId: string) =>
+    api.get(`/tenants/${tenantId}/training/modules`),
+  getTrainingAssignments: (tenantId: string) =>
+    api.get(`/tenants/${tenantId}/training/assignments`),
+  getModuleQuestions: (tenantId: string, moduleId: string) =>
+    api.get(`/tenants/${tenantId}/training/modules/${moduleId}/questions`),
+  createTrainingAssignment: (tenantId: string, data: { user_id: string; training_module_id: string; due_at?: string | null }) =>
+    api.post(`/tenants/${tenantId}/training/assignments`, data),
+  completeTrainingAssignment: (tenantId: string, assignmentId: string, scorePercent: number) =>
+    api.post(`/tenants/${tenantId}/training/assignments/${assignmentId}/complete`, { score_percent: scorePercent }),
+  getTrainingCertificate: (tenantId: string, assignmentId: string) =>
+    api.get(`/tenants/${tenantId}/training/assignments/${assignmentId}/certificate`),
+}
+
+// ── Workforce ───────────────────────────────────────────────────────────────────
+export const workforceApi = {
+  getEmployees: (tenantId: string) =>
+    api.get(`/tenants/${tenantId}/workforce/employees`),
+  createEmployee: (tenantId: string, data: { first_name: string; last_name: string; email: string; department?: string; role_title?: string }) =>
+    api.post(`/tenants/${tenantId}/workforce/employees`, data),
+  getEmployee: (tenantId: string, employeeId: string) =>
+    api.get(`/tenants/${tenantId}/workforce/employees/${employeeId}`),
+  updateEmployee: (tenantId: string, employeeId: string, data: Partial<{ first_name: string; last_name: string; email: string; department: string; role_title: string; is_active: boolean }>) =>
+    api.put(`/tenants/${tenantId}/workforce/employees/${employeeId}`, data),
+  deleteEmployee: (tenantId: string, employeeId: string) =>
+    api.delete(`/tenants/${tenantId}/workforce/employees/${employeeId}`),
+  getCsvTemplate: (tenantId: string) =>
+    api.get(`/tenants/${tenantId}/workforce/csv-template`, { responseType: 'blob' }),
+  importCsv: (tenantId: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post(`/tenants/${tenantId}/workforce/import-csv`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  exportCsv: (tenantId: string) =>
+    api.get(`/tenants/${tenantId}/workforce/export-csv`, { responseType: 'blob' }),
+  getAssignments: (tenantId: string, params?: { employee_id?: string; status?: string }) =>
+    api.get(`/tenants/${tenantId}/workforce/assignments`, { params }),
+  createAssignment: (tenantId: string, data: { employee_id: string; training_module_id: string; due_at?: string | null }) =>
+    api.post(`/tenants/${tenantId}/workforce/assignments`, data),
+  sendInvite: (tenantId: string, assignmentId: string) =>
+    api.post(`/tenants/${tenantId}/workforce/assignments/${assignmentId}/send-invite`),
+  completeAssignment: (tenantId: string, assignmentId: string, data: { score_percent: number; ip_address?: string; user_agent?: string }) =>
+    api.post(`/tenants/${tenantId}/workforce/assignments/${assignmentId}/complete`, data),
+  getCertificates: (tenantId: string, params?: { employee_id?: string }) =>
+    api.get(`/tenants/${tenantId}/workforce/certificates`, { params }),
+  verifyCertificate: (tenantId: string, number: string) =>
+    api.get(`/tenants/${tenantId}/workforce/certificates/verify`, { params: { number } }),
+  downloadCertificate: (tenantId: string, certificateId: string) =>
+    api.get(`/tenants/${tenantId}/workforce/certificates/${certificateId}/download`),
+  getStats: (tenantId: string) =>
+    api.get(`/tenants/${tenantId}/workforce/stats`),
 }

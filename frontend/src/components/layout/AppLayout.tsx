@@ -3,9 +3,11 @@ import { NavLink, useNavigate, Outlet } from 'react-router-dom'
 import {
   LayoutDashboard, ClipboardList, FileText, ShieldCheck,
   Users, Building2, ChevronRight, LogOut, Bell,
-  AlertTriangle, Activity, Settings, ChevronDown, FileSearch
+  AlertTriangle, Activity, Settings, ChevronDown, FileSearch,
+  BarChart3, CheckSquare, FolderOpen, GraduationCap, FileCheck
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
+import { NotificationBell } from '../NotificationBell'
 import clsx from 'clsx'
 
 // ── Logo ───────────────────────────────────────────────────────────────────────
@@ -66,6 +68,7 @@ function InternalSidebar() {
       </p>
       <NavItem to="/internal" icon={LayoutDashboard} label="Dashboard" exact />
       <NavItem to="/internal/tenants" icon={Building2} label="Clients" />
+      <NavItem to="/internal/evidence-review" icon={FileCheck} label="Evidence Review" />
       <NavItem to="/internal/assessments" icon={ClipboardList} label="Assessments" />
 
       <p className="px-3 pt-4 pb-1 text-xs font-semibold text-slate-600 uppercase tracking-wider" style={{ margin: 0, padding: '16px 12px 4px', fontSize: 11, fontWeight: 600, color: '#64748b' }}>
@@ -73,6 +76,13 @@ function InternalSidebar() {
       </p>
       <NavItem to="/internal/results" icon={Activity} label="Engine Results" />
       <NavItem to="/internal/reports" icon={FileText} label="Reports" />
+      <NavItem to="/internal/communications" icon={Bell} label="Communications" />
+
+      <p className="px-3 pt-4 pb-1 text-xs font-semibold text-slate-600 uppercase tracking-wider" style={{ margin: 0, padding: '16px 12px 4px', fontSize: 11, fontWeight: 600, color: '#64748b' }}>
+        Tools
+      </p>
+      <NavItem to="/internal/sra" icon={BarChart3} label="SRA Assessment" />
+      <NavItem to="/internal/evidence-checklist" icon={CheckSquare} label="Evidence Checklist" />
 
       <p className="px-3 pt-4 pb-1 text-xs font-semibold text-slate-600 uppercase tracking-wider" style={{ margin: 0, padding: '16px 12px 4px', fontSize: 11, fontWeight: 600, color: '#64748b' }}>
         Admin
@@ -86,10 +96,13 @@ function InternalSidebar() {
 function ClientSidebar({ tenantId }: { tenantId: string }) {
   return (
     <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
-      <NavItem to={`/client/${tenantId}`} icon={LayoutDashboard} label="Overview" exact />
+      <NavItem to={`/client/${tenantId}`} icon={LayoutDashboard} label="Dashboard" exact />
       <NavItem to={`/client/${tenantId}/assessment`} icon={ClipboardList} label="Assessment" />
-      <NavItem to={`/client/${tenantId}/evidence`} icon={FileText} label="Evidence" />
+      <NavItem to={`/client/${tenantId}/evidence`} icon={FolderOpen} label="Evidence Vault" />
+      <NavItem to={`/client/${tenantId}/training`} icon={GraduationCap} label="Training" />
+      <NavItem to={`/client/${tenantId}/workforce`} icon={Users} label="Workforce" />
       <NavItem to={`/client/${tenantId}/reports`} icon={ShieldCheck} label="Reports" />
+      <NavItem to={`/client/${tenantId}/settings`} icon={Settings} label="Settings" />
     </nav>
   )
 }
@@ -122,7 +135,7 @@ function UserFooter() {
 }
 
 // ── Topbar ─────────────────────────────────────────────────────────────────────
-function Topbar({ title, subtitle }: { title?: string; subtitle?: string }) {
+function Topbar({ title, subtitle, tenantId }: { title?: string; subtitle?: string; tenantId?: string }) {
   return (
     <header
       className="h-14 flex items-center justify-between px-6 border-b border-blue-500/08 flex-shrink-0"
@@ -133,9 +146,13 @@ function Topbar({ title, subtitle }: { title?: string; subtitle?: string }) {
         {subtitle && <p className="text-xs text-slate-500" style={{ margin: 0, fontSize: 12, color: '#94a3b8' }}>{subtitle}</p>}
       </div>
       <div className="flex items-center gap-2">
-        <button className="p-2 rounded-lg hover:bg-white/5 text-slate-500 hover:text-slate-300 transition-colors relative">
-          <Bell size={16} />
-        </button>
+        {tenantId ? (
+          <NotificationBell tenantId={tenantId} />
+        ) : (
+          <button className="p-2 rounded-lg hover:bg-white/5 text-slate-500 hover:text-slate-300 transition-colors relative" aria-hidden>
+            <Bell size={16} />
+          </button>
+        )}
       </div>
     </header>
   )
@@ -204,7 +221,7 @@ export function ClientLayout({ tenantId, tenantName }: {
 
       {/* Main */}
       <main className="flex-1 flex flex-col overflow-hidden" style={layoutStyles.main}>
-        <Topbar subtitle={tenantName ? `${tenantName} — Client Portal` : 'Client Portal'} />
+        <Topbar subtitle={tenantName ? `${tenantName} — Client Portal` : 'Client Portal'} tenantId={tenantId} />
         <div className="flex-1 overflow-y-auto" style={layoutStyles.mainContent}>
           <div className="p-6 animate-fade-in" style={{ padding: 24 }}>
             <Outlet />

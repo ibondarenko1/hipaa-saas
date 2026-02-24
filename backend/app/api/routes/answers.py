@@ -2,19 +2,19 @@
 Answers routes — Phase 2
 PUT  /tenants/{tenant_id}/assessments/{assessment_id}/answers/{question_id}  — upsert
 PATCH /tenants/{tenant_id}/assessments/{assessment_id}/answers/batch          — batch upsert
-GET   /tenants/{tenant_id}/assessments/{assessment_id}/answers                — list
+GET   /tenants/{tenant_id}/assessments/{assessment_id}/answers                — list (optional ?control_id=HIPAA-GV-01)
 Per spec: Validation_Rules_v1 section 3 + API spec section 5
 """
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db.session import get_db
-from app.models.models import Assessment, Answer, Question, TenantMember
+from app.models.models import Assessment, Answer, Question, Control, TenantMember
 from app.core.auth import get_current_user, get_membership
 from app.models.models import User
 from app.schemas.schemas import (
     UpsertAnswerRequest, BatchUpsertAnswersRequest,
-    BatchUpsertAnswersResponse, AnswerDTO
+    BatchUpsertAnswersResponse, AnswerDTO, AnswerWithQuestionDTO,
 )
 from app.services.audit import log_event
 from app.services.answer_validator import validate_answer_value
@@ -47,18 +47,73 @@ def _check_editable(assessment: Assessment) -> None:
         )
 
 
-@router.get("", response_model=list[AnswerDTO])
+def _answer_value_to_string(value: dict) -> str | None:
+    """Serialize answer value dict to a single string for UI."""
+    if not value:
+        return None
+    if value.get("choice"):
+        return value["choice"]
+    if value.get("date"):
+        return value["date"]
+    if value.get("text"):
+        return value["text"]
+    return None
+
+
+@router.get("", response_model=list[AnswerDTO] | list[AnswerWithQuestionDTO])
 async def list_answers(
     tenant_id: str,
     assessment_id: str,
+    control_id: str | None = Query(None, description="Filter by hipaa_control_id e.g. HIPAA-GV-01"),
     membership: TenantMember = Depends(get_membership),
     db: AsyncSession = Depends(get_db),
 ):
-    await _get_assessment_or_404(assessment_id, tenant_id, db)
+    assessment = await _get_assessment_or_404(assessment_id, tenant_id, db)
+
+    if control_id:
+        # Return questions for this control with their current answer values
+        q_result = await db.execute(
+            select(Question, Control.hipaa_control_id)
+            .join(Control, Control.id == Question.control_id)
+            .where(
+                Question.framework_id == assessment.framework_id,
+                Question.is_active == True,
+                Control.hipaa_control_id == control_id,
+            )
+            .order_by(Question.question_code)
+        )
+        rows = q_result.all()
+        if not rows:
+            return []
+        question_ids = [q.id for q, _ in rows]
+        a_result = await db.execute(
+            select(Answer).where(
+                Answer.assessment_id == assessment_id,
+                Answer.question_id.in_(question_ids),
+            )
+        )
+        answers_by_q = {a.question_id: a for a in a_result.scalars().all()}
+        out = []
+        for question, hipaa_id in rows:
+            answer = answers_by_q.get(question.id)
+            value_str = _answer_value_to_string(answer.value) if answer else None
+            choices = None
+            if question.options and isinstance(question.options, dict):
+                choices = question.options.get("choices")
+            out.append(
+                AnswerWithQuestionDTO(
+                    question_id=question.id,
+                    question_text=question.text,
+                    question_type=question.answer_type,
+                    options=choices,
+                    answer_value=value_str,
+                    control_id=hipaa_id,
+                )
+            )
+        return out
 
     result = await db.execute(
-        select(Answer).where(Answer.assessment_id == assessment_id)
-        .order_by(Answer.created_at)
+        select(Answer).where(Answer.assessment_id == assessment_id).order_by(Answer.created_at)
     )
     return [AnswerDTO.model_validate(a) for a in result.scalars().all()]
 

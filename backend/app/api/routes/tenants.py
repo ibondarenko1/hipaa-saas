@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from app.db.session import get_db
-from app.models.models import Tenant, TenantMember, User
+from app.models.models import Tenant, TenantMember, User, EvidenceFile, AuditEvent
 from app.core.auth import get_current_user, get_membership, require_internal, hash_password
 from app.schemas.schemas import (
-    CreateTenantRequest, UpdateTenantRequest, TenantDTO,
+    CreateTenantRequest, UpdateTenantRequest, TenantDTO, TenantSummaryDTO,
     AddTenantMemberRequest, UpdateMemberRequest, TenantMemberDTO, UserDTO
 )
 from app.services.audit import log_event
@@ -68,6 +68,59 @@ async def get_tenant(
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
     return TenantDTO.model_validate(tenant)
+
+
+TOTAL_CONTROLS = 41  # HIPAA evidence controls
+
+
+@router.get("/{tenant_id}/summary", response_model=TenantSummaryDTO)
+async def get_tenant_summary(
+    tenant_id: str,
+    membership: TenantMember = Depends(get_membership),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Tenant).where(Tenant.id == tenant_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    # Load all evidence for tenant
+    ev_result = await db.execute(
+        select(EvidenceFile).where(EvidenceFile.tenant_id == tenant_id)
+    )
+    files = ev_result.scalars().all()
+    evidence_count = len(files)
+    needs_attention_count = sum(1 for f in files if f.admin_comment)
+    controls_with_evidence = set()
+    accepted_controls = set()
+    for f in files:
+        tags = f.tags or []
+        for tag in tags:
+            if isinstance(tag, str):
+                controls_with_evidence.add(tag)
+                if not f.admin_comment:
+                    accepted_controls.add(tag)
+    assessment_progress = min(100, (len(controls_with_evidence) * 100) // TOTAL_CONTROLS) if TOTAL_CONTROLS else 0
+    accepted_evidence_count = min(TOTAL_CONTROLS, len(accepted_controls))
+
+    # Last activity: latest evidence created_at or audit event
+    last_activity = None
+    if files:
+        last_activity = max(f.created_at for f in files)
+    ae_result = await db.execute(
+        select(func.max(AuditEvent.created_at)).where(AuditEvent.tenant_id == tenant_id)
+    )
+    audit_max = ae_result.scalar()
+    if audit_max and (last_activity is None or audit_max > last_activity):
+        last_activity = audit_max
+
+    return TenantSummaryDTO(
+        assessment_progress=assessment_progress,
+        accepted_evidence_count=accepted_evidence_count,
+        needs_attention_count=needs_attention_count,
+        total_controls=TOTAL_CONTROLS,
+        evidence_count=evidence_count,
+        last_activity=last_activity,
+    )
 
 
 @router.patch("/{tenant_id}", response_model=TenantDTO)

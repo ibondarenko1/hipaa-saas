@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.routes import auth, tenants, frameworks, audit, assessments, answers, evidence, engine, reports
+from app.api.routes import auth, tenants, frameworks, audit, assessments, answers, evidence, engine, reports, templates, training, notifications, internal, workforce
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -38,6 +38,13 @@ app.include_router(evidence.router, prefix="/api/v1")
 # Phase 3
 app.include_router(engine.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
+
+# Templates & Training
+app.include_router(templates.router, prefix="/api/v1")
+app.include_router(training.router, prefix="/api/v1")
+app.include_router(notifications.router, prefix="/api/v1")
+app.include_router(workforce.router, prefix="/api/v1")
+app.include_router(internal.router, prefix="/api/v1")
 
 
 @app.get("/health")

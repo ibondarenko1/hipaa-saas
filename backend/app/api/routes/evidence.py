@@ -22,6 +22,7 @@ from app.models.models import User
 from app.schemas.schemas import (
     CreateUploadUrlRequest, CreateUploadUrlResponse,
     RegisterEvidenceFileRequest, EvidenceFileDTO,
+    UpdateEvidenceRequest,
     CreateEvidenceLinkRequest, EvidenceLinkDTO,
     DownloadUrlResponse,
 )
@@ -216,6 +217,78 @@ async def get_evidence_download_url(
     return DownloadUrlResponse(download_url=download_url, expires_at=expires_at)
 
 
+# ── Update evidence (admin comment / status) ───────────────────────────────────
+
+@router.patch("/evidence/{evidence_file_id}", response_model=EvidenceFileDTO)
+async def update_evidence_file(
+    tenant_id: str,
+    evidence_file_id: str,
+    body: UpdateEvidenceRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    membership: TenantMember = Depends(get_membership),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(EvidenceFile).where(
+            EvidenceFile.id == evidence_file_id,
+            EvidenceFile.tenant_id == tenant_id,
+        )
+    )
+    evidence = result.scalar_one_or_none()
+    if not evidence:
+        raise HTTPException(status_code=404, detail="Evidence file not found")
+    if body.admin_comment is not None:
+        evidence.admin_comment = body.admin_comment
+    if body.status is not None:
+        evidence.status_updated_by = (current_user.email or str(current_user.id))
+        if body.status == "accepted":
+            evidence.admin_comment = None
+    await db.flush()
+    await log_event(
+        db, "evidence_updated",
+        tenant_id=tenant_id, user_id=current_user.id,
+        entity_type="evidence_file", entity_id=evidence_file_id,
+        payload={"admin_comment": body.admin_comment is not None, "status": body.status},
+        ip_address=request.client.host if request.client else None,
+    )
+    return EvidenceFileDTO.model_validate(evidence)
+
+
+# ── Delete evidence ───────────────────────────────────────────────────────────
+
+@router.delete("/evidence/{evidence_file_id}", status_code=204)
+async def delete_evidence_file(
+    tenant_id: str,
+    evidence_file_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    membership: TenantMember = Depends(get_membership),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(EvidenceFile).where(
+            EvidenceFile.id == evidence_file_id,
+            EvidenceFile.tenant_id == tenant_id,
+        )
+    )
+    evidence = result.scalar_one_or_none()
+    if not evidence:
+        raise HTTPException(status_code=404, detail="Evidence file not found")
+    file_name = evidence.file_name
+    storage_key = evidence.storage_key
+    await db.delete(evidence)
+    await db.flush()
+    storage.delete_object(storage_key)
+    await log_event(
+        db, "evidence_deleted",
+        tenant_id=tenant_id, user_id=current_user.id,
+        entity_type="evidence_file", entity_id=evidence_file_id,
+        payload={"file_name": file_name},
+        ip_address=request.client.host if request.client else None,
+    )
+
+
 # ── Evidence Links ─────────────────────────────────────────────────────────────
 
 @router.post(
@@ -313,13 +386,22 @@ async def list_evidence_links(
 ):
     await _get_assessment_or_404(assessment_id, tenant_id, db)
 
-    query = select(EvidenceLink).where(
-        EvidenceLink.assessment_id == assessment_id,
-        EvidenceLink.tenant_id == tenant_id,
+    query = (
+        select(EvidenceLink, Control.hipaa_control_id)
+        .outerjoin(Control, Control.id == EvidenceLink.control_id)
+        .where(
+            EvidenceLink.assessment_id == assessment_id,
+            EvidenceLink.tenant_id == tenant_id,
+        )
     )
     if control_id:
         query = query.where(EvidenceLink.control_id == control_id)
 
     query = query.order_by(EvidenceLink.created_at.desc())
     result = await db.execute(query)
-    return [EvidenceLinkDTO.model_validate(link) for link in result.scalars().all()]
+    out = []
+    for link, hipaa_id in result.all():
+        dto = EvidenceLinkDTO.model_validate(link)
+        dto.hipaa_control_id = hipaa_id
+        out.append(dto)
+    return out

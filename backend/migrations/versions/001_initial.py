@@ -10,6 +10,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+_UUID = postgresql.UUID(as_uuid=False)
+
 revision: str = "001_initial"
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
@@ -20,7 +22,7 @@ def upgrade() -> None:
     # ── tenants ────────────────────────────────────────────────────────────────
     op.create_table(
         "tenants",
-        sa.Column("id", sa.String(), primary_key=True),
+        sa.Column("id", _UUID, primary_key=True),
         sa.Column("name", sa.Text(), nullable=False),
         sa.Column("industry", sa.Text(), nullable=True),
         sa.Column("size_band", sa.Text(), nullable=True),

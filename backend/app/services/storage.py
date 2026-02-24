@@ -34,6 +34,11 @@ def generate_report_key(tenant_id: str, assessment_id: str, file_type: str, fmt:
     return f"reports/{tenant_id}/{assessment_id}/{file_type}.{fmt.lower()}"
 
 
+def generate_certificate_key(tenant_id: str, assignment_id: str) -> str:
+    """Generate storage key for training certificate PDF."""
+    return f"training/{tenant_id}/certificates/{assignment_id}.pdf"
+
+
 def create_presigned_upload_url(storage_key: str, content_type: str, expires_in: int = None) -> str:
     """Return presigned PUT URL for direct client upload to MinIO."""
     client = _get_client()

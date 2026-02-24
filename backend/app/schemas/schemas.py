@@ -59,6 +59,15 @@ class UpdateTenantRequest(BaseModel):
     industry: Optional[str] = None
     size_band: Optional[str] = None
     primary_contact_email: Optional[EmailStr] = None
+    security_officer_name: Optional[str] = None
+    security_officer_title: Optional[str] = None
+    security_officer_email: Optional[str] = None
+    security_officer_phone: Optional[str] = None
+    ehr_system: Optional[str] = None
+    employee_count_range: Optional[str] = None
+    location_count: Optional[int] = None
+    onboarding_completed: Optional[bool] = None
+    onboarding_step: Optional[int] = None
 
 
 class TenantDTO(BaseModel):
@@ -67,10 +76,28 @@ class TenantDTO(BaseModel):
     industry: Optional[str]
     size_band: Optional[str]
     primary_contact_email: Optional[str]
+    security_officer_name: Optional[str] = None
+    security_officer_title: Optional[str] = None
+    security_officer_email: Optional[str] = None
+    security_officer_phone: Optional[str] = None
+    ehr_system: Optional[str] = None
+    employee_count_range: Optional[str] = None
+    location_count: Optional[int] = None
+    onboarding_completed: Optional[bool] = None
+    onboarding_step: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class TenantSummaryDTO(BaseModel):
+    assessment_progress: int  # 0-100
+    accepted_evidence_count: int
+    needs_attention_count: int
+    total_controls: int  # 41
+    evidence_count: int
+    last_activity: Optional[datetime] = None
 
 
 # ── TENANT MEMBERS ────────────────────────────────────────────────────────────
@@ -222,6 +249,18 @@ class AnswerDTO(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AnswerWithQuestionDTO(BaseModel):
+    """Question with current answer value for questionnaire UI (filtered by control)."""
+    question_id: str
+    question_text: str
+    question_type: str  # yes_no, yes_no_partial, yes_no_unknown, select, date
+    options: Optional[list[str]] = None
+    answer_value: Optional[str] = None  # current value as string (choice, date, or text)
+    control_id: Optional[str] = None    # hipaa_control_id e.g. HIPAA-GV-01
+
+    model_config = {"from_attributes": True}
+
+
 # ── EVIDENCE ──────────────────────────────────────────────────────────────────
 
 class CreateUploadUrlRequest(BaseModel):
@@ -254,9 +293,16 @@ class EvidenceFileDTO(BaseModel):
     storage_key: str
     sha256: Optional[str]
     tags: Optional[list]
+    admin_comment: Optional[str] = None
+    status_updated_by: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class UpdateEvidenceRequest(BaseModel):
+    status: Optional[str] = None
+    admin_comment: Optional[str] = None
 
 
 class CreateEvidenceLinkRequest(BaseModel):
@@ -272,6 +318,7 @@ class EvidenceLinkDTO(BaseModel):
     assessment_id: str
     evidence_file_id: str
     control_id: Optional[str]
+    hipaa_control_id: Optional[str] = None  # e.g. HIPAA-GV-01 for frontend grid
     question_id: Optional[str]
     note: Optional[str]
     created_at: datetime
@@ -430,3 +477,196 @@ class PublishReportPackageResponse(BaseModel):
     report_package_id: str
     status: str
     published_at: datetime
+
+
+# ── TRAINING ───────────────────────────────────────────────────────────────────
+
+class CreateTrainingModuleRequest(BaseModel):
+    title: str
+    description: Optional[str] = None
+    sort_order: Optional[int] = 0
+
+
+class TrainingModuleDTO(BaseModel):
+    id: str
+    tenant_id: str
+    title: str
+    description: Optional[str]
+    sort_order: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TrainingQuestionDTO(BaseModel):
+    id: str
+    training_module_id: str
+    question_text: str
+    options: list
+    correct_index: Optional[int] = None
+    sort_order: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CreateTrainingAssignmentRequest(BaseModel):
+    user_id: str
+    training_module_id: str
+    due_at: Optional[datetime] = None
+
+
+class TrainingAssignmentDTO(BaseModel):
+    id: str
+    tenant_id: str
+    user_id: str
+    training_module_id: str
+    assigned_at: datetime
+    due_at: Optional[datetime]
+    completed_at: Optional[datetime]
+    score_percent: Optional[int]
+    certificate_storage_key: Optional[str]
+
+    model_config = {"from_attributes": True}
+
+
+class CompleteAssignmentRequest(BaseModel):
+    score_percent: int  # 0-100
+
+
+class CertificateResponse(BaseModel):
+    download_url: str
+    expires_at: datetime
+
+
+# ── NOTIFICATIONS ──────────────────────────────────────────────────────────────
+
+class CreateNotificationRequest(BaseModel):
+    type: str  # document_request|assessment_reminder|evidence_request|training_reminder|review_complete
+    subject: Optional[str] = None
+    message: str
+    target_user_id: Optional[str] = None  # null = all users in tenant
+    control_id: Optional[str] = None
+    due_date: Optional[datetime] = None
+
+
+class NotificationDTO(BaseModel):
+    id: str
+    tenant_id: str
+    user_id: Optional[str]
+    type: str
+    subject: Optional[str]
+    message: str
+    sent_by: Optional[str]
+    read: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── WORKFORCE ──────────────────────────────────────────────────────────────────
+
+class CreateEmployeeRequest(BaseModel):
+    first_name: str
+    last_name: str
+    email: EmailStr
+    department: Optional[str] = None
+    role_title: Optional[str] = None
+
+
+class UpdateEmployeeRequest(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    department: Optional[str] = None
+    role_title: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class EmployeeDTO(BaseModel):
+    id: str
+    tenant_id: str
+    first_name: str
+    last_name: str
+    email: str
+    department: Optional[str]
+    role_title: Optional[str]
+    is_active: bool
+    user_id: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CreateEmployeeAssignmentRequest(BaseModel):
+    employee_id: str
+    training_module_id: str
+    due_at: Optional[datetime] = None
+
+
+class EmployeeAssignmentDTO(BaseModel):
+    id: str
+    tenant_id: str
+    employee_id: str
+    training_module_id: str
+    assigned_by: Optional[str]
+    assigned_at: datetime
+    due_at: Optional[datetime]
+    invite_sent_at: Optional[datetime]
+    reminder_count: int
+    last_reminder_at: Optional[datetime]
+    status: str
+    completed_at: Optional[datetime]
+    score_percent: Optional[int]
+    certificate_id: Optional[str]
+
+    model_config = {"from_attributes": True}
+
+
+class CompleteEmployeeAssignmentRequest(BaseModel):
+    score_percent: int  # 0-100
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+
+
+class TrainingCertificateDTO(BaseModel):
+    id: str
+    tenant_id: str
+    employee_id: str
+    assignment_id: Optional[str]
+    certificate_number: str
+    employee_name: str
+    organization_name: str
+    module_title: str
+    score_percent: int
+    completed_at: datetime
+    content_hash: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CertificateVerifyResponse(BaseModel):
+    valid: bool
+    certificate: Optional[TrainingCertificateDTO] = None
+    message: Optional[str] = None
+
+
+class WorkforceStatsDTO(BaseModel):
+    total_employees: int
+    active_employees: int
+    total_assignments: int
+    completed_assignments: int
+    overdue_assignments: int
+    certificates_issued: int
+
+
+class WorkforceImportResultDTO(BaseModel):
+    total_rows: int
+    created_count: int
+    updated_count: int
+    skipped_count: int
+    errors: Optional[dict] = None

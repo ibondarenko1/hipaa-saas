@@ -25,6 +25,8 @@ from app.models.models import (
     Framework, ControlsetVersion, RulesetVersion,
     Control, Rule, Question, User, Tenant, TenantMember
 )
+from app.data.control_mapping import CONTROL_CODE_TO_HIPAA_ID
+from app.models.training import TrainingModule, TrainingQuestion
 
 engine = create_async_engine(settings.DATABASE_URL, echo=False)
 SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -169,6 +171,19 @@ RULE_PATTERNS = {
 }
 
 
+def _seed_questions(db, module_id: str, questions: list):
+    """Insert training questions for a module. Each item: (question_text, options list, correct_index)."""
+    for i, (text, options, correct_index) in enumerate(questions):
+        q = TrainingQuestion(
+            training_module_id=module_id,
+            question_text=text,
+            options=options,
+            correct_index=correct_index,
+            sort_order=i,
+        )
+        db.add(q)
+
+
 async def seed():
     async with SessionLocal() as db:
         # ── Framework ──────────────────────────────────────────────────────────
@@ -238,6 +253,7 @@ async def seed():
                 )
             )
             ctrl = result.scalar_one_or_none()
+            hipaa_id = CONTROL_CODE_TO_HIPAA_ID.get(code)
             if not ctrl:
                 ctrl = Control(
                     framework_id=framework.id,
@@ -248,9 +264,13 @@ async def seed():
                     category=category,
                     severity=severity,
                     na_eligible=na_eligible,
+                    hipaa_control_id=hipaa_id,
                 )
                 db.add(ctrl)
                 await db.flush()
+            else:
+                if hipaa_id and not ctrl.hipaa_control_id:
+                    ctrl.hipaa_control_id = hipaa_id
             control_map[code] = ctrl
 
         print(f"✓ Controls seeded: {len(control_map)}")
@@ -350,6 +370,88 @@ async def seed():
         else:
             print(f"→ Internal tenant exists")
 
+        # ── Training modules (3 modules with questions) ────────────────────────
+        result = await db.execute(
+            select(TrainingModule).where(TrainingModule.tenant_id == internal_tenant.id)
+        )
+        if result.scalar_one_or_none() is None:
+            # Module 1: HIPAA Security Awareness Fundamentals (10 questions)
+            m1 = TrainingModule(
+                tenant_id=internal_tenant.id,
+                title="HIPAA Security Awareness Fundamentals",
+                description="Core concepts of HIPAA Security Rule and workforce responsibilities.",
+                sort_order=1,
+                is_active=True,
+            )
+            db.add(m1)
+            await db.flush()
+            _seed_questions(db, m1.id, [
+                ("What does PHI stand for?", ["Protected Health Information", "Personal Health Info", "Private Healthcare Data", "Public Health Initiative"], 0),
+                ("Who is responsible for HIPAA compliance in an organization?", ["Everyone who handles PHI", "Only IT staff", "Only the Security Officer", "Only management"], 0),
+                ("Which of the following is an example of ePHI?", ["Patient name in an email", "A billboard ad", "Public health statistics", "De-identified data"], 0),
+                ("What is the minimum necessary standard?", ["Use only the minimum PHI needed for the task", "Use as much data as possible", "Only apply to paper records", "Optional for small practices"], 0),
+                ("When must a breach be reported to HHS?", ["Within 60 days of discovery for 500+ individuals", "Within 30 days", "Only if requested", "Within 1 year"], 0),
+                ("Which is a physical safeguard?", ["Workstation security", "Encryption", "Access controls", "Audit logs"], 0),
+                ("What is the purpose of the Security Rule?", ["Protect confidentiality, integrity, and availability of ePHI", "Replace the Privacy Rule", "Apply only to large entities", "Optional for healthcare"], 0),
+                ("Who can you share ePHI with without authorization?", ["No one, unless permitted by law or policy", "Any colleague", "Family members", "Anyone who asks"], 0),
+                ("What should you do if you suspect a breach?", ["Report immediately per organization policy", "Wait to see if anyone notices", "Only tell your manager", "Ignore it"], 0),
+                ("Training on HIPAA security must be:", ["Provided to all workforce members", "Optional for part-time staff", "Once at hire only", "Only for clinicians"], 0),
+            ])
+            await db.flush()
+            # Module 2: Password Security & Access Management (8 questions)
+            m2 = TrainingModule(
+                tenant_id=internal_tenant.id,
+                title="Password Security & Access Management",
+                description="Strong passwords, access controls, and account security.",
+                sort_order=2,
+                is_active=True,
+            )
+            db.add(m2)
+            await db.flush()
+            _seed_questions(db, m2.id, [
+                ("What makes a strong password?", ["Long, mix of letters/numbers/symbols, unique", "Short and easy to remember", "Same as personal email", "Written on a sticky note"], 0),
+                ("When should you share your password?", ["Never", "With your manager", "With IT when they ask", "With a trusted colleague"], 0),
+                ("Multi-Factor Authentication (MFA) helps by:", ["Requiring something you know and something you have", "Replacing passwords", "Only applying to email", "Being optional"], 0),
+                ("How often should passwords typically be changed?", ["Per organization policy (e.g., every 90 days)", "Never", "Only when forgotten", "Weekly"], 0),
+                ("Least privilege means:", ["Users get only the access needed for their role", "Everyone gets admin access", "No one can access ePHI", "Access is optional"], 0),
+                ("When should access be revoked?", ["As soon as someone leaves or changes role", "At the end of the month", "When they ask", "Never"], 0),
+                ("Where should you store passwords?", ["In an approved password manager or per policy", "In a browser", "In a spreadsheet", "On a sticky note"], 0),
+                ("If you suspect your password was compromised, you should:", ["Change it immediately and report per policy", "Wait and see", "Share with IT only", "Do nothing"], 0),
+            ])
+            await db.flush()
+            # Module 3: Incident Identification & Reporting (8 questions)
+            m3 = TrainingModule(
+                tenant_id=internal_tenant.id,
+                title="Incident Identification & Reporting",
+                description="Recognizing and reporting security incidents and breaches.",
+                sort_order=3,
+                is_active=True,
+            )
+            db.add(m3)
+            await db.flush()
+            _seed_questions(db, m3.id, [
+                ("Which is a security incident?", ["Unauthorized access to patient data", "A scheduled backup", "A routine login", "Reading policy"], 0),
+                ("What should you do first when you discover a potential breach?", ["Report to your supervisor or Security Officer immediately", "Fix it yourself", "Wait to see if it happens again", "Tell only coworkers"], 0),
+                ("A lost laptop with ePHI is:", ["A potential breach; report and follow incident process", "Not a concern if password protected", "Only report if someone finds it", "No need to report"], 0),
+                ("Ransomware that encrypts ePHI is:", ["A breach; report and isolate per incident plan", "An IT-only issue", "Not reportable if you pay", "Rare so ignore"], 0),
+                ("Documentation of incidents should include:", ["What happened, when, who was affected, actions taken", "Only the date", "Nothing written", "Only verbal report"], 0),
+                ("Who is typically responsible for breach notification to HHS?", ["The organization (often Privacy/Security Officer)", "The individual who found it", "Only legal", "No one"], 0),
+                ("Phishing emails that could lead to ePHI exposure should be:", ["Reported per policy; do not click links", "Deleted only", "Forwarded to everyone", "Ignored"], 0),
+                ("After an incident, the organization should:", ["Assess, contain, correct, and document per plan", "Only fix the technical issue", "Avoid documentation", "Blame the user"], 0),
+            ])
+            await db.flush()
+            print("✓ Training modules seeded: 3 modules with questions")
+        else:
+            print("→ Training modules already exist")
+
+        # ── Demo client (Valley Creek, ~60% compliance) ─────────────────────────
+        from app.services.seed_demo import run_seed_demo_client
+        demo_result = await run_seed_demo_client(db)
+        if demo_result.get("error"):
+            print(f"  ⚠ Demo client skipped: {demo_result['error']}")
+        else:
+            print(f"✓ Demo client: {demo_result['tenant_name']} (login: {demo_result['client_email']} / {demo_result['client_password']})")
+
         await db.commit()
         print("\n✅ Seed complete.")
         print(f"   Framework ID : {framework.id}")
@@ -358,6 +460,8 @@ async def seed():
         print(f"   Controls     : {len(control_map)}")
         print(f"   Questions    : {len(QUESTIONS)}")
         print(f"   Admin email  : {admin_email}")
+        if not demo_result.get("error"):
+            print(f"   Demo client  : {demo_result.get('client_email', '')} (see Clients in app)")
 
 
 if __name__ == "__main__":

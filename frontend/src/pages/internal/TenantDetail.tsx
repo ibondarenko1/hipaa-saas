@@ -12,7 +12,16 @@ import {
   PageLoader, StatusBadge, SeverityBadge, SectionHeader,
   EmptyState, MetricCard, Modal, Alert, Spinner
 } from '../../components/ui'
+import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+
+function getErrorMessage(e: any): string {
+  const d = e?.response?.data?.detail
+  if (typeof d === 'string') return d
+  if (d && typeof d === 'object' && d.message) return d.message
+  if (d && typeof d === 'object') return JSON.stringify(d)
+  return e?.message || 'Operation failed'
+}
 
 export default function TenantDetail() {
   const { tenantId } = useParams<{ tenantId: string }>()
@@ -26,6 +35,7 @@ export default function TenantDetail() {
   const [gaps, setGaps] = useState<GapDTO[]>([])
   const [remediation, setRemediation] = useState<RemediationActionDTO[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [showNewAssessment, setShowNewAssessment] = useState(false)
   const [showInvite, setShowInvite] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
@@ -64,7 +74,9 @@ export default function TenantDetail() {
         setGaps([])
         setRemediation([])
       }
-    }).catch(console.error).finally(() => setLoading(false))
+    }).catch((e: any) => {
+      setLoadError(e?.response?.data?.detail || 'Failed to load client')
+    }).finally(() => setLoading(false))
   }, [tenantId])
 
   const createAssessment = async () => {
@@ -110,8 +122,9 @@ export default function TenantDetail() {
     try {
       await assessmentsApi.submit(tenantId, assessmentId)
       setAssessments(prev => prev.map(a => a.id === assessmentId ? { ...a, status: 'submitted', submitted_at: new Date().toISOString() } : a))
+      toast.success('Assessment submitted')
     } catch (e: any) {
-      alert(e?.response?.data?.detail || 'Submit failed')
+      toast.error(getErrorMessage(e))
     } finally {
       setSubmittingId(null)
     }
@@ -122,20 +135,49 @@ export default function TenantDetail() {
     setRunningEngine(assessmentId)
     try {
       await engineApi.run(tenantId, assessmentId)
+      toast.success('Compliance check complete')
       navigate(`/internal/tenants/${tenantId}/assessments/${assessmentId}/results`)
     } catch (e: any) {
-      alert(e?.response?.data?.detail || 'Engine run failed')
+      toast.error(getErrorMessage(e))
     } finally {
       setRunningEngine(null)
     }
   }
 
+  const submitAndRunEngine = async (assessmentId: string) => {
+    if (!tenantId) return
+    setSubmittingId(assessmentId)
+    try {
+      await assessmentsApi.submit(tenantId, assessmentId)
+      setAssessments(prev => prev.map(a => a.id === assessmentId ? { ...a, status: 'submitted', submitted_at: new Date().toISOString() } : a))
+      setSubmittingId(null)
+      setRunningEngine(assessmentId)
+      await engineApi.run(tenantId, assessmentId)
+      toast.success('Check complete')
+      navigate(`/internal/tenants/${tenantId}/assessments/${assessmentId}/results`)
+    } catch (e: any) {
+      toast.error(getErrorMessage(e))
+    } finally {
+      setSubmittingId(null)
+      setRunningEngine(null)
+    }
+  }
+
   if (loading) return <PageLoader />
+  if (loadError || !tenant) {
+    return (
+      <div className="space-y-4">
+        {loadError && <Alert type="error" message={loadError} />}
+        {!tenant && !loadError && <Alert type="error" message="Client not found." />}
+      </div>
+    )
+  }
   if (!tenant) return <div className="text-slate-400">Client not found</div>
 
   const submitted = assessments.filter(a => a.status === 'submitted')
   const completed = assessments.filter(a => a.status === 'completed')
   const latestSubmitted = assessments.find(a => a.status === 'submitted' || a.status === 'completed')
+  const inProgressAssessment = assessments.find(a => a.status === 'draft' || a.status === 'in_progress')
   const passCount = controls.filter(c => c.status === 'Pass').length
   const passPct = controls.length ? Math.round((passCount / controls.length) * 100) : 0
   const criticalGaps = gaps.filter(g => g.severity === 'Critical').length
@@ -200,7 +242,29 @@ export default function TenantDetail() {
           )}
         </div>
         {!latestSubmitted ? (
-          <p className="text-sm text-slate-500">Create an assessment, have the client fill the questionnaire and submit, then click <strong>Run engine</strong> below to generate gap analysis.</p>
+          <div>
+            {inProgressAssessment ? (
+              <>
+                <p className="text-sm text-slate-500 mb-2">This client has an assessment in progress. Submit it and run the compliance check to generate gap analysis.</p>
+                <button
+                  onClick={() => submitAndRunEngine(inProgressAssessment.id)}
+                  disabled={submittingId === inProgressAssessment.id || runningEngine === inProgressAssessment.id}
+                  className="btn-primary text-xs"
+                >
+                  {(submittingId === inProgressAssessment.id || runningEngine === inProgressAssessment.id) ? (
+                    <><Spinner className="w-3 h-3 inline mr-1" /> Submitting & running…
+                  </>
+                  ) : (
+                    <><Play size={12} className="inline mr-1" /> Submit & run check
+                  </>
+                  )}
+                </button>
+                <p className="text-xs text-slate-500 mt-2">Or use &quot;Submit for client&quot; in the Assessments table below, then &quot;Run Engine&quot;.</p>
+              </>
+            ) : (
+              <p className="text-sm text-slate-500">Create an assessment, have the client fill the questionnaire and submit, then run the compliance check (Run engine) to generate gap analysis.</p>
+            )}
+          </div>
         ) : controls.length === 0 ? (
           <div>
             <p className="text-sm text-slate-500 mb-2">Run the compliance engine to generate gap analysis from client answers.</p>
