@@ -1,4 +1,4 @@
-.............# HIPAA Readiness Platform
+..............# HIPAA Readiness Platform
 
 <p align="center">
   <img src="https://img.shields.io/badge/FastAPI-0.111-009688?style=flat-square&logo=fastapi" />
