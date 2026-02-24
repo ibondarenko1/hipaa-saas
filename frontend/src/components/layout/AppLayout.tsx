@@ -81,6 +81,7 @@ function InternalSidebar() {
       <p className="px-3 pt-4 pb-1 text-xs font-semibold text-slate-600 uppercase tracking-wider" style={{ margin: 0, padding: '16px 12px 4px', fontSize: 11, fontWeight: 600, color: '#64748b' }}>
         Tools
       </p>
+      <NavItem to="/internal/training-status" icon={GraduationCap} label="Training Status" />
       <NavItem to="/internal/sra" icon={BarChart3} label="SRA Assessment" />
       <NavItem to="/internal/evidence-checklist" icon={CheckSquare} label="Evidence Checklist" />
 

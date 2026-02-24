@@ -150,8 +150,12 @@ export const reportsApi = {
     api.post(`/tenants/${tenantId}/reports/packages/${packageId}/publish`, data || {}),
   download: (tenantId: string, packageId: string) =>
     api.get(`/tenants/${tenantId}/reports/packages/${packageId}/download`),
+  /** Presigned URL (may not work from browser if MinIO host is internal). */
   downloadFile: (tenantId: string, fileId: string) =>
     api.get(`/tenants/${tenantId}/reports/files/${fileId}/download-url`),
+  /** Stream file through backend — use this for reliable download in the browser. */
+  downloadFileStream: (tenantId: string, fileId: string) =>
+    api.get(`/tenants/${tenantId}/reports/files/${fileId}/download`, { responseType: 'blob' }),
 }
 
 // ── Notifications ─────────────────────────────────────────────────────────────

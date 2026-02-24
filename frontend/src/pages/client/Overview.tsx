@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
   ClipboardList, FileText, CheckCircle2, AlertTriangle, Clock,
-  ArrowRight, Upload, Send, Activity, Users, Award
+  ArrowRight, Upload, Send, Activity, Users, Award, GraduationCap
 } from 'lucide-react'
-import { assessmentsApi, tenantsApi, evidenceApi, auditApi, workforceApi } from '../../services/api'
+import { assessmentsApi, tenantsApi, evidenceApi, auditApi, workforceApi, trainingApi } from '../../services/api'
 import { AssessmentDTO, AssessmentProgress, TenantDTO, AuditEventDTO } from '../../types'
 import { hipaaEvidenceData } from '../../data/hipaaEvidence'
 import {
@@ -24,6 +24,8 @@ export default function ClientOverview() {
   const [evidenceLinks, setEvidenceLinks] = useState<Array<{ control_id: string | null }>>([])
   const [auditEvents, setAuditEvents] = useState<AuditEventDTO[]>([])
   const [workforceStats, setWorkforceStats] = useState<{ total_employees: number; completed_assignments: number; total_assignments: number; overdue_assignments: number } | null>(null)
+  const [trainingModules, setTrainingModules] = useState<Array<{ id: string; title: string }>>([])
+  const [trainingCompleted, setTrainingCompleted] = useState(0)
   const [loading, setLoading] = useState(true)
   const [controlFilter, setControlFilter] = useState<FilterTab>('All')
 
@@ -35,12 +37,18 @@ export default function ClientOverview() {
       evidenceApi.list(tenantId),
       auditApi.list(tenantId, { limit: 5 }),
       workforceApi.getStats(tenantId).catch(() => ({ data: null })),
+      trainingApi.getTrainingModules(tenantId).catch(() => ({ data: [] })),
+      trainingApi.getTrainingAssignments(tenantId).catch(() => ({ data: [] })),
     ])
-      .then(async ([tRes, aRes, eRes, auditRes, wRes]) => {
+      .then(async ([tRes, aRes, eRes, auditRes, wRes, modRes, assignRes]) => {
         setTenant(tRes.data)
         setEvidenceFiles(eRes.data)
         setAuditEvents(Array.isArray(auditRes.data) ? auditRes.data : [])
         setWorkforceStats(wRes?.data ?? null)
+        const modules = Array.isArray(modRes.data) ? modRes.data : []
+        setTrainingModules(modules.map((m: { id: string; title: string }) => ({ id: m.id, title: m.title })))
+        const assignments = Array.isArray(assignRes.data) ? assignRes.data : []
+        setTrainingCompleted(assignments.filter((a: { completed_at?: string | null }) => a.completed_at).length)
         const all: AssessmentDTO[] = aRes.data
         const active = all.find((a) => a.status !== 'completed') || all[0]
         setAssessment(active ?? null)
@@ -139,7 +147,7 @@ export default function ClientOverview() {
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Card 1 — Overall Status */}
-        <div className="lg:col-span-2 card p-5">
+        <div className="card p-5">
           <h1 className="text-xl font-bold text-slate-100">{tenant?.name ?? 'Your Organization'}</h1>
           <p className="text-sm text-slate-500 mt-0.5">HIPAA Readiness Assessment</p>
           <div className="flex flex-wrap gap-3 mt-4">
@@ -155,6 +163,31 @@ export default function ClientOverview() {
               </span>
             )}
           </div>
+        </div>
+
+        {/* Card 1b — Training (first row, always visible) */}
+        <div className="card p-5 border border-blue-500/20 bg-blue-500/5">
+          <h2 className="text-base font-semibold text-slate-200 mb-2 flex items-center gap-2">
+            <GraduationCap size={20} className="text-blue-400" />
+            Security Training
+          </h2>
+          <p className="text-sm text-slate-500 mb-3">HIPAA and security awareness training</p>
+          <div className="flex flex-wrap gap-3 mb-3">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-300 text-sm">
+              <CheckCircle2 size={14} />
+              {trainingCompleted} of {trainingModules.length || 0} modules completed
+            </span>
+          </div>
+          <ProgressBar
+            value={trainingModules.length ? (trainingCompleted / trainingModules.length) * 100 : 0}
+            color="bg-blue-500"
+          />
+          <Link
+            to={`/client/${tenantId}/training`}
+            className="btn-primary text-sm mt-4 inline-flex items-center gap-1.5 w-full justify-center py-2"
+          >
+            Go to training <ArrowRight size={14} />
+          </Link>
         </div>
 
         {/* Card 2 — Progress */}

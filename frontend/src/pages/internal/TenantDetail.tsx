@@ -18,7 +18,20 @@ import { format } from 'date-fns'
 function getErrorMessage(e: any): string {
   const d = e?.response?.data?.detail
   if (typeof d === 'string') return d
-  if (d && typeof d === 'object' && d.message) return d.message
+  if (d && typeof d === 'object' && d.message) {
+    const details = d.details
+    if (details && typeof details === 'object') {
+      const parts: string[] = [d.message]
+      if (details.answered_ratio != null && details.required_ratio != null) {
+        parts.push(`Answered ${Math.round((details.answered_ratio as number) * 100)}% (need ${Math.round((details.required_ratio as number) * 100)}%).`)
+      }
+      if (Array.isArray(details.missing_critical_questions) && details.missing_critical_questions.length) {
+        parts.push(`Missing critical: ${(details.missing_critical_questions as string[]).join(', ')}.`)
+      }
+      return parts.join(' ')
+    }
+    return d.message
+  }
   if (d && typeof d === 'object') return JSON.stringify(d)
   return e?.message || 'Operation failed'
 }

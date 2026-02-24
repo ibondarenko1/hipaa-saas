@@ -98,7 +98,7 @@ export default function ClientTraining() {
     <div className="max-w-4xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-100">Security Training</h1>
-        <p className="text-slate-500 mt-0.5">Complete required HIPAA security training for your team.</p>
+        <p className="text-slate-500 mt-0.5">Complete required HIPAA security training modules and get your certificate.</p>
       </div>
 
       <div className="flex flex-wrap gap-4">

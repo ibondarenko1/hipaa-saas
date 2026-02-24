@@ -94,6 +94,13 @@ def upload_bytes(storage_key: str, data: bytes, content_type: str) -> None:
     )
 
 
+def get_object_bytes(storage_key: str) -> bytes:
+    """Fetch object from storage and return bytes (for proxy download)."""
+    client = _get_client()
+    resp = client.get_object(Bucket=settings.STORAGE_BUCKET, Key=storage_key)
+    return resp["Body"].read()
+
+
 def get_presign_expiry_datetime(expires_in: int = None) -> datetime:
     expires_in = expires_in or settings.STORAGE_PRESIGN_EXPIRY
     return datetime.now(timezone.utc) + timedelta(seconds=expires_in)

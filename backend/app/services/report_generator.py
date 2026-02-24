@@ -27,7 +27,7 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 )
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.models.models import (
     Assessment, Tenant, ControlResult, Gap, Risk,
@@ -428,7 +428,7 @@ Engine results:
 - High severity gaps: {len(high_gaps)}
 
 Top gaps:
-{chr(10).join(f'- [{g.severity}] {g.description[:120]}' for g in top_gaps[:8])}
+{chr(10).join(f'- [{getattr(g, "severity", "")}] {(g.description or "")[:120]}' for g in top_gaps[:8])}
 
 {tone_instruction}
 
@@ -613,10 +613,15 @@ async def generate_executive_summary(
     story.append(posture_table)
     story.append(Spacer(1, 16))
 
-    # Narrative
+    # Narrative (escape XML entities for ReportLab Paragraph)
+    def _escape_para(text: str) -> str:
+        if not text:
+            return ""
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
     story.append(Paragraph("Executive Summary", heading_style))
     for para in narrative.split("\n\n"):
-        para = para.strip()
+        para = _escape_para(para.strip())
         if para:
             story.append(Paragraph(para, body_style))
 
@@ -627,7 +632,8 @@ async def generate_executive_summary(
         findings_data = [["Severity", "Control", "Gap Description"]]
         for gap in critical_high:
             # Get control code via query would require async — use description prefix
-            desc = gap.description[:100] + "..." if len(gap.description) > 100 else gap.description
+            d = gap.description or ""
+            desc = (d[:100] + "...") if len(d) > 100 else d
             findings_data.append([gap.severity, "—", desc])
 
         findings_table = Table(findings_data, colWidths=[1 * inch, 1.2 * inch, 4.3 * inch])
@@ -681,6 +687,16 @@ async def generate_all_reports(
     Generate all 5 required report artifacts.
     Returns dict: {file_type: bytes}
     """
+    cr_count_result = await db.execute(
+        select(func.count()).select_from(ControlResult).where(
+            ControlResult.assessment_id == assessment.id
+        )
+    )
+    if cr_count_result.scalar_one() == 0:
+        raise ValueError(
+            "No control results found for this assessment. Run the compliance engine before generating reports."
+        )
+
     results = {}
 
     results["executive_summary"] = await generate_executive_summary(

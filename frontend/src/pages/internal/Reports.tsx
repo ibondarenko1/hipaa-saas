@@ -26,7 +26,7 @@ function PackageDocuments({
   packageId,
   onDownloadFile,
   downloadingFileId,
-}: { tenantId: string; packageId: string; onDownloadFile: (fileId: string) => void; downloadingFileId: string | null }) {
+}: { tenantId: string; packageId: string; onDownloadFile: (fileId: string, fileName: string) => void; downloadingFileId: string | null }) {
   const [files, setFiles] = useState<ReportFileDTO[]>([])
   const [loading, setLoading] = useState(true)
   useEffect(() => {
@@ -50,7 +50,7 @@ function PackageDocuments({
               {f.size_bytes != null && <span className="text-xs text-slate-600">({Math.round(f.size_bytes / 1024)} KB)</span>}
             </div>
             <button
-              onClick={() => onDownloadFile(f.id)}
+              onClick={() => onDownloadFile(f.id, f.file_name)}
               disabled={downloadingFileId === f.id}
               className="btn-ghost text-xs text-blue-400 hover:text-blue-300"
             >
@@ -131,19 +131,43 @@ export default function InternalReports() {
   const downloadPackage = async (packageId: string) => {
     if (!selectedTenant) return
     try {
-      const res = await reportsApi.download(selectedTenant, packageId)
-      window.open(res.data.download_url, '_blank')
-    } catch { alert('Download failed') }
+      const filesRes = await reportsApi.listPackageFiles(selectedTenant, packageId)
+      const files = (filesRes.data || []) as { id: string; file_name: string; file_type: string }[]
+      const execFile = files.find(f => f.file_type === 'executive_summary') || files[0]
+      if (!execFile) {
+        alert('No files in this package')
+        return
+      }
+      const res = await reportsApi.downloadFileStream(selectedTenant, execFile.id)
+      const blob = res.data as Blob
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = execFile.file_name || 'report.pdf'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      alert('Download failed')
+    }
   }
 
-  const downloadFile = async (fileId: string) => {
+  const downloadFile = async (fileId: string, fileName: string) => {
     if (!selectedTenant) return
     setDownloadingFileId(fileId)
     try {
-      const res = await reportsApi.downloadFile(selectedTenant, fileId)
-      window.open(res.data.download_url, '_blank')
-    } catch { alert('Download failed') }
-    finally { setDownloadingFileId(null) }
+      const res = await reportsApi.downloadFileStream(selectedTenant, fileId)
+      const blob = res.data as Blob
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName || 'download'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      alert('Download failed')
+    } finally {
+      setDownloadingFileId(null)
+    }
   }
 
   const currentTenant = tenants.find(t => t.id === selectedTenant)

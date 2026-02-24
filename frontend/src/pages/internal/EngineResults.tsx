@@ -64,6 +64,16 @@ export default function EngineResults() {
     }).catch(console.error).finally(() => setLoading(false))
   }, [tenantId, assessmentId])
 
+  function getReportError(e: any): string {
+    const d = e?.response?.data?.detail
+    if (typeof d === 'string') return d
+    if (Array.isArray(d) && d.length) return d.map((x: any) => x?.msg || x?.message || String(x)).join('; ')
+    if (d && typeof d === 'object' && d.message) return d.message
+    if (d && typeof d === 'object') return (d as { message?: string }).message || 'Report generation failed'
+    if (e?.response?.status === 500) return 'Report generation failed (500). Common causes: MinIO/storage not running, or backend error. Check backend logs.'
+    return e?.message || 'Report generation failed'
+  }
+
   const generateReport = async () => {
     if (!tenantId || !assessmentId) return
     setGenLoading(true)
@@ -78,7 +88,7 @@ export default function EngineResults() {
       setShowReportModal(false)
       window.location.href = `/internal/tenants/${tenantId}/reports`
     } catch (e: any) {
-      setGenError(e?.response?.data?.detail || 'Report generation failed')
+      setGenError(getReportError(e))
     } finally {
       setGenLoading(false)
     }
@@ -373,12 +383,17 @@ export default function EngineResults() {
       )}
 
       {/* Generate Report Modal */}
-      <Modal open={showReportModal} onClose={() => setShowReportModal(false)} title="Generate Report Package">
-        {genError && <Alert type="error" message={genError} />}
+      <Modal open={showReportModal} onClose={() => { setShowReportModal(false); setGenError('') }} title="Generate Report Package">
+        {genError && (
+          <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
+            {genError}
+          </div>
+        )}
         <div className="space-y-4 mb-5">
           <p className="text-sm text-slate-400">
             Generate the full 5-document compliance report package. This will create:
             Executive Summary (PDF), Gap Register, Risk Register, Remediation Roadmap, and Evidence Checklist (all XLSX).
+            The compliance engine must have been run for this assessment first (gap analysis and control results must exist).
           </p>
           <div className="flex items-center justify-between p-3 rounded-lg bg-navy-800/50 border border-blue-500/10">
             <div>

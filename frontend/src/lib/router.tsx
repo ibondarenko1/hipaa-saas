@@ -18,6 +18,7 @@ import Communications from '../pages/internal/Communications'
 import AuditLog from '../pages/internal/AuditLog'
 import SRAAssessment from '../pages/internal/SRAAssessment'
 import EvidenceChecklist from '../pages/internal/EvidenceChecklist'
+import TrainingStatus from '../pages/internal/TrainingStatus'
 
 // Pages — Client
 import ClientOverview from '../pages/client/Overview'
@@ -131,6 +132,7 @@ export default function AppRouter() {
         <Route path="communications" element={<Communications />} />
         <Route path="sra" element={<SRAAssessment />} />
         <Route path="evidence-checklist" element={<EvidenceChecklist />} />
+        <Route path="training-status" element={<TrainingStatus />} />
         <Route path="audit" element={<AuditLog />} />
       </Route>
 

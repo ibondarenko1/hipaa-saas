@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Building2, ClipboardList, CheckCircle2, ArrowRight, Plus,
-  BarChart3, Wrench, FileText, Circle
+  BarChart3, Wrench, FileText, Circle, GraduationCap
 } from 'lucide-react'
 import { tenantsApi, assessmentsApi, reportsApi } from '../../services/api'
 import { TenantDTO, AssessmentDTO } from '../../types'
@@ -84,6 +84,20 @@ export default function InternalDashboard() {
         <MetricCard label="Assessments" value={totalAssessments} sub="Total" />
         <MetricCard label="Awaiting engine" value={pendingReview} sub="Submitted, run gap analysis" color="text-amber-400" />
         <MetricCard label="Reports published" value={publishedReports} color="text-emerald-400" />
+      </div>
+
+      {/* Training status by client */}
+      <div className="card p-5 border border-blue-500/20 bg-blue-500/5">
+        <h2 className="text-base font-semibold text-slate-200 mb-2 flex items-center gap-2">
+          <GraduationCap size={20} className="text-blue-400" />
+          Training Status
+        </h2>
+        <p className="text-sm text-slate-500 mb-3">
+          View which employees have completed training per client. Select a client and see completion status for each employee.
+        </p>
+        <Link to="/internal/training-status" className="btn-primary text-sm inline-flex items-center gap-1.5 py-2">
+          Training status by employees <ArrowRight size={14} />
+        </Link>
       </div>
 
       <div>

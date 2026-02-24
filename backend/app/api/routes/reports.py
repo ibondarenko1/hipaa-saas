@@ -19,6 +19,7 @@ import zipfile
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.db.session import get_db
@@ -141,7 +142,6 @@ async def create_report_package(
         package_version=next_version,
         status="draft",
         generated_by_user_id=current_user.id,
-        notes=body.notes,
     )
     db.add(pkg)
     await db.flush()
@@ -503,3 +503,52 @@ async def download_report_file(
     )
 
     return DownloadUrlResponse(download_url=download_url, expires_at=expires_at)
+
+
+# ── Download Single File (stream through backend, no MinIO URL in browser) ──────
+
+@router.get(
+    "/reports/files/{file_id}/download",
+    response_class=Response,
+)
+async def download_report_file_stream(
+    tenant_id: str,
+    file_id: str,
+    current_user: User = Depends(get_current_user),
+    membership: TenantMember = Depends(get_membership),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stream file through backend so the browser gets it from the API (works when MinIO is not reachable from the client)."""
+    file_result = await db.execute(
+        select(ReportFile).where(
+            ReportFile.id == file_id,
+            ReportFile.tenant_id == tenant_id,
+        )
+    )
+    report_file = file_result.scalar_one_or_none()
+    if not report_file:
+        raise HTTPException(status_code=404, detail="Report file not found")
+
+    pkg_result = await db.execute(
+        select(ReportPackage).where(ReportPackage.id == report_file.package_id)
+    )
+    pkg = pkg_result.scalar_one_or_none()
+    if membership.role == "client_user" and (not pkg or pkg.status != "published"):
+        raise HTTPException(status_code=403, detail="Only files from published packages can be downloaded.")
+
+    try:
+        data = storage.get_object_bytes(report_file.storage_key)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Storage error: {e}")
+
+    content_type = (
+        "application/pdf" if report_file.format == "PDF"
+        else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{report_file.file_name}"',
+        },
+    )
