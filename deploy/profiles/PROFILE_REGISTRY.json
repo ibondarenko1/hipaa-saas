@@ -1,0 +1,17 @@
+{
+  "schema_version": "profile_registry_v1",
+  "profiles": {
+    "small-clinic": {
+      "path": "deploy/profiles/profile-small-clinic/agent.config.json",
+      "description": "Default profile for small clinics. Minimal load, hourly resend, daily cleanup."
+    },
+    "mid-clinic": {
+      "path": "deploy/profiles/profile-mid-clinic/agent.config.json",
+      "description": "Profile for larger clinics / more volume. More samples and resend capacity."
+    },
+    "test-lab": {
+      "path": "deploy/profiles/profile-test-lab/agent.config.json",
+      "description": "Test profile. Upload disabled by default (MOCK), signing disabled."
+    }
+  }
+}

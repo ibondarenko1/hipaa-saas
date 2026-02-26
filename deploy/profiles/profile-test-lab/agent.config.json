@@ -1,0 +1,76 @@
+{
+  "agent_version": "0.1.0-mvp",
+  "client_org_id": "demo-lab",
+  "profile": "test-lab",
+  "timezone": "America/Los_Angeles",
+  "period_days": 7,
+
+  "collectors": {
+    "windows": { "enabled": true, "max_samples": 10 },
+    "m365": { "enabled": false }
+  },
+
+  "sampling": {
+    "windows_samples_target": 10,
+    "m365_samples_target": 0
+  },
+
+  "sanitization": {
+    "classes": {
+      "user": "<USER>",
+      "host": "<HOST>",
+      "domain": "<DOMAIN>",
+      "ip_public": "<IP_PUBLIC>",
+      "path": "<PATH>"
+    }
+  },
+
+  "dlp_self_check": {
+    "enabled": true,
+    "rules_path": "config\\dlp\\rules.json",
+    "allowlist_path": "config\\dlp\\allowlist.json",
+    "scan_targets": []
+  },
+
+  "upload": {
+    "enabled": false,
+    "endpoint_url": "",
+    "api_key": "",
+    "timeout_seconds": 30,
+    "strict_upload": false,
+    "retry": {
+      "max_attempts": 2,
+      "base_delay_ms": 1000,
+      "max_delay_ms": 5000,
+      "jitter_ms": 250,
+      "retry_on_429": true,
+      "retry_on_5xx": true,
+      "retry_on_timeout": true,
+      "retry_on_network": true
+    }
+  },
+
+  "outbox_resend": {
+    "enabled": true,
+    "max_packages_per_run": 3
+  },
+
+  "archival": {
+    "enabled": true,
+    "archive_root": "C:\\ProgramData\\SummitAgent\\archive",
+    "archive_accepted": true,
+    "archive_rejected": true,
+    "retention": {
+      "accepted_days": 14,
+      "rejected_days": 30
+    }
+  },
+
+  "signing": {
+    "enabled": false,
+    "algorithm": "HMACSHA256",
+    "key_id": "",
+    "hmac_key": "",
+    "require_signing": false
+  }
+}

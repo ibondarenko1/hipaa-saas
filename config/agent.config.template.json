@@ -1,0 +1,32 @@
+{
+  "agent_id": "AUTO-GENERATED-UUID-ON-INSTALL",
+  "client_org_id": "",
+  "agent_version": "0.1.0-mvp",
+  "paths": {
+    "base_dir": "C:\\ProgramData\\SummitAgent",
+    "logs_dir": "C:\\ProgramData\\SummitAgent\\logs",
+    "state_dir": "C:\\ProgramData\\SummitAgent\\state",
+    "work_dir": "C:\\ProgramData\\SummitAgent\\work",
+    "outbox_dir": "C:\\ProgramData\\SummitAgent\\outbox"
+  },
+  "upload": {
+    "enabled": false,
+    "endpoint_url": "",
+    "api_key": ""
+  },
+  "signing": {
+    "enabled": false,
+    "key_id": null,
+    "key_path": null
+  },
+  "archival": {
+    "enabled": true,
+    "archive_root": "C:\\ProgramData\\SummitAgent\\archive",
+    "archive_accepted": true,
+    "archive_rejected": true,
+    "retention": {
+      "accepted_days": 90,
+      "rejected_days": 180
+    }
+  }
+}

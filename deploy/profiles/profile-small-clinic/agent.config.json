@@ -1,0 +1,76 @@
+{
+  "agent_version": "0.1.0-mvp",
+  "client_org_id": "REPLACE_ME",
+  "profile": "small-clinic",
+  "timezone": "America/Los_Angeles",
+  "period_days": 30,
+
+  "collectors": {
+    "windows": { "enabled": true, "max_samples": 30 },
+    "m365": { "enabled": false }
+  },
+
+  "sampling": {
+    "windows_samples_target": 30,
+    "m365_samples_target": 0
+  },
+
+  "sanitization": {
+    "classes": {
+      "user": "<USER>",
+      "host": "<HOST>",
+      "domain": "<DOMAIN>",
+      "ip_public": "<IP_PUBLIC>",
+      "path": "<PATH>"
+    }
+  },
+
+  "dlp_self_check": {
+    "enabled": true,
+    "rules_path": "config\\dlp\\rules.json",
+    "allowlist_path": "config\\dlp\\allowlist.json",
+    "scan_targets": []
+  },
+
+  "upload": {
+    "enabled": true,
+    "endpoint_url": "REPLACE_ME",
+    "api_key": "REPLACE_ME",
+    "timeout_seconds": 60,
+    "strict_upload": false,
+    "retry": {
+      "max_attempts": 3,
+      "base_delay_ms": 2000,
+      "max_delay_ms": 15000,
+      "jitter_ms": 750,
+      "retry_on_429": true,
+      "retry_on_5xx": true,
+      "retry_on_timeout": true,
+      "retry_on_network": true
+    }
+  },
+
+  "outbox_resend": {
+    "enabled": true,
+    "max_packages_per_run": 5
+  },
+
+  "archival": {
+    "enabled": true,
+    "archive_root": "C:\\ProgramData\\SummitAgent\\archive",
+    "archive_accepted": true,
+    "archive_rejected": true,
+    "retention": {
+      "accepted_days": 90,
+      "rejected_days": 180
+    }
+  },
+
+  "signing": {
+    "enabled": true,
+    "algorithm": "HMACSHA256",
+    "key_id": "REPLACE_ME",
+    "hmac_key": "REPLACE_ME",
+    "require_signing": true
+  }
+}
