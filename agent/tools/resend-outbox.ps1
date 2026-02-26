@@ -150,6 +150,15 @@ foreach ($pkg in $zips) {
     if (-not (Test-Path -LiteralPath $queuePath)) { continue }
 
     $queue = Get-Content -LiteralPath $queuePath -Raw | ConvertFrom-Json
+    # Ensure optional queue fields exist so we can set them (create-test-package does not create these)
+    foreach ($prop in @('last_error_code','last_error_message','last_result_at_utc','receipt_id')) {
+        if (-not (Get-Member -InputObject $queue -Name $prop -MemberType Properties -ErrorAction SilentlyContinue)) {
+            Add-Member -InputObject $queue -NotePropertyName $prop -NotePropertyValue $null
+        }
+    }
+    if (-not (Get-Member -InputObject $queue -Name 'last_errors' -MemberType Properties -ErrorAction SilentlyContinue)) {
+        Add-Member -InputObject $queue -NotePropertyName 'last_errors' -NotePropertyValue @()
+    }
     $state = [string]$queue.state
     if ($state -notin @("PENDING", "RETRY_SCHEDULED")) { continue }
 
@@ -204,7 +213,35 @@ foreach ($pkg in $zips) {
         continue
     }
 
-    # TODO: handle ACCEPTED, DUPLICATE_ACCEPTED, retryable failures (update queue, receipt, archive accepted)
+    if ($result.Success) {
+        $queue.state = if ($result.Duplicate) { "DUPLICATE_ACCEPTED" } else { "ACCEPTED" }
+        $queue.last_result_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+        $queue.receipt_id = [string]$result.ReceiptId
+        $queue | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $queuePath -Encoding UTF8
+        $receiptPath = Join-Path $outboxDir ($pkg.BaseName + ".receipt.json")
+        $receipt = [pscustomobject]@{
+            at_utc       = (Get-Date).ToUniversalTime().ToString("o")
+            state        = $queue.state
+            upload       = [pscustomobject]@{ mode = [string]$result.Mode; receipt_id = [string]$result.ReceiptId }
+            idempotency  = $idempotencyKey
+        }
+        $receipt | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $receiptPath -Encoding UTF8
+        Write-AgentLog -Level INFO -Message ("Accepted: file={0}; receipt_id={1}" -f $pkg.Name, $result.ReceiptId) -LogFilePath $LogFilePath
+        $archiveInfo = $null
+        try {
+            $archiveInfo = Move-SummitFilesToArchive -RuntimeCfg $runtimeCfg -PackageZipPath $pkg.FullName -QueueState $queue.state -Reason "upload_success" -LogFilePath $LogFilePath
+        } catch { Write-AgentLog -Level WARN -Message ("Archival failed: {0}" -f $_.Exception.Message) -LogFilePath $LogFilePath }
+        continue
+    }
+    # Retryable failure: update queue state to RETRY_SCHEDULED, last_error_*, leave in outbox
+    if ($result.Retryable) {
+        $queue.state = "RETRY_SCHEDULED"
+        $queue.last_error_code = [string]$result.ErrorCode
+        $queue.last_error_message = [string]$result.Message
+        $queue.last_result_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+        $queue | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $queuePath -Encoding UTF8
+        Write-AgentLog -Level WARN -Message ("Retry scheduled: file={0}; error={1}" -f $pkg.Name, $result.ErrorCode) -LogFilePath $LogFilePath
+    }
 }
 
 Write-AgentLog -Level INFO -Message "Resend pass completed." -LogFilePath $LogFilePath

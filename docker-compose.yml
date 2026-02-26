@@ -1,3 +1,5 @@
+# DATA SAFETY: Do not run "docker compose down -v" if you need to keep DB data.
+# Use "docker compose down" (without -v). Backup first: .\backup-db.ps1
 services:
   postgres:
     image: postgres:16-alpine
@@ -62,6 +64,8 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       LLM_ENABLED: ${LLM_ENABLED:-false}
       DEBUG: ${DEBUG:-false}
+      INGEST_BASE_URL: http://ingest:8080
+      INGEST_API_KEY: ${INGEST_API_KEY:-demo-ingest-key}
     ports:
       - "0.0.0.0:8000:8000"
     depends_on:
@@ -84,6 +88,28 @@ services:
         python scripts/reset_admin_password.py &&
         uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
       "
+
+  ingest:
+    build:
+      context: ./server/ingest
+      dockerfile: Dockerfile
+    container_name: hipaa_ingest
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgresql://hipaa:hipaa@postgres:5432/hipaa
+      INGEST_API_KEY: ${INGEST_API_KEY:-demo-ingest-key}
+      SIGNING_REQUIRED: "false"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["sh", "-c", "node dist/db.js migrate && node dist/index.js"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   frontend:
     image: node:20-alpine

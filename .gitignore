@@ -9,3 +9,27 @@ __pycache__/
 frontend/node_modules/
 frontend/dist/
 .npm
+
+# Release build artifacts
+/release/
+/build/tmp/
+/dist/
+*.sha256.txt
+
+# Publisher signing secrets (DO NOT COMMIT)
+build/publisher-signing.key.txt
+build/*.secret.txt
+
+# Local deployment secrets (DO NOT COMMIT)
+deploy/**/ENV.ps1
+deploy/**/ENV.local.ps1
+
+# Local secrets store artifacts (target machine only, not in repo)
+deploy/secrets/*.dpapi.txt
+deploy/secrets/audit.log
+
+# DB backups (local only, do not commit)
+/backups/
+
+# Agent demo (local run)
+.agent-demo/

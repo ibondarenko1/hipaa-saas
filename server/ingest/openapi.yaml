@@ -1,0 +1,88 @@
+openapi: 3.0.3
+info:
+  title: Ingest Receipt API (Commit 31)
+  version: 0.1.0
+  description: Minimal read API for ingest receipts (list by clinic, get by receipt_id).
+
+servers:
+  - url: /api/v1
+    description: API base
+
+paths:
+  /ingest/receipts/{receipt_id}:
+    get:
+      summary: Get receipt by ID
+      operationId: getReceipt
+      tags: [ingest]
+      parameters:
+        - name: receipt_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Receipt found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiptFull'
+        '404':
+          description: Receipt not found
+
+  /ingest/receipts:
+    get:
+      summary: List receipts by client (clinic)
+      operationId: listReceipts
+      tags: [ingest]
+      parameters:
+        - name: client_org_id
+          in: query
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 50 }
+      responses:
+        '200':
+          description: List of receipts (latest first)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiptListResponse'
+
+components:
+  schemas:
+    ReceiptFull:
+      type: object
+      required: [receipt_id, client_org_id, status, received_at_utc]
+      properties:
+        receipt_id:          { type: string, example: "ING-20260225-ABC123DEF456" }
+        client_org_id:       { type: string, example: "demo-clinic-01" }
+        status:              { type: string, enum: [ACCEPTED, REJECTED] }
+        duplicate:          { type: boolean }
+        idempotency_key:    { type: string }
+        package_hash_sha256: { type: string }
+        agent_version:      { type: string, nullable: true }
+        received_at_utc:    { type: string, format: date-time }
+        last_seen_at_utc:   { type: string, format: date-time }
+        hit_count:          { type: integer }
+        error_code:         { type: string, nullable: true }
+        message:            { type: string, nullable: true }
+
+    ReceiptListItem:
+      type: object
+      properties:
+        receipt_id:       { type: string }
+        status:           { type: string, enum: [ACCEPTED, REJECTED] }
+        duplicate:        { type: boolean }
+        received_at_utc:  { type: string, format: date-time }
+        agent_version:    { type: string, nullable: true }
+        error_code:       { type: string, nullable: true }
+
+    ReceiptListResponse:
+      type: object
+      required: [client_org_id, items]
+      properties:
+        client_org_id: { type: string }
+        items:         { type: array, items: { $ref: '#/components/schemas/ReceiptListItem' } }

@@ -80,8 +80,36 @@ hipaa-saas/
 │       │   └── client/        # Overview, Assessment, Evidence, Reports
 │       ├── services/api.ts    # Axios client — all API methods
 │       └── types/index.ts     # TypeScript DTOs
+├── server/ingest/             # Ingest service (Node/TypeScript): POST packages, verify manifest, store receipts
+├── agent/                     # summit-local-agent: upload module, tools (diagnostics, cleanup, resend, create-test-package)
+├── install/                   # install, preflight, uninstall, test-run
+├── build/                     # package-release, verify-release
+├── config/                    # agent.config.template.json
+├── deploy/                    # profiles, secrets
 └── docker-compose.yml
 ```
+
+### Local Agent (summit-local-agent)
+
+The repo includes a **Windows local agent** that runs at the clinic (or MSP): it builds ZIP packages with a `manifest.json` (and optional HMAC signature), uploads them to the **Ingest Service**, and archives results by retention.
+
+| Layer | Description |
+|-------|-------------|
+| **agent/** | Upload module (`uploader.psm1` — config validation, HTTP upload); tools: `diagnostics.ps1`, `cleanup-archive.ps1`, `resend-outbox.ps1`. |
+| **install/** | `install.ps1` (preflight, scheduled task registration), `preflight.ps1`, `uninstall.ps1`, `test-run.ps1`. |
+| **build/** | `package-release.ps1` → `summit-local-agent-v<version>.zip`; `verify-release.ps1` (manifest signature). |
+| **config/** | `agent.config.template.json` — paths (outbox, archive, logs), upload (endpoint, API key), signing, archival retention. |
+| **deploy/** | Profiles (small-clinic, mid-clinic, test-lab), secrets (API key, HMAC). |
+
+**Flow:** Packages land in **outbox** → **resend-outbox** sends to **Ingest** (POST with headers `X-Summit-Client-Org-Id`, `X-API-Key`, etc.) → responses move to **archive** (accepted/rejected by month) → **SummitAgent Archive Cleanup** (daily 03:20) deletes by retention (e.g. accepted 90 days, rejected 180 days). Config and secrets are validated before any HTTP call; invalid config yields TERMINAL_REJECTED and archive to rejected.
+
+**Ingest service** (Docker, port 8080): validates ZIP hash, `manifest.json` (including `compliance.sanitized=true`, `raw_logs_included=false`), optional signature; stores receipts; idempotent by `X-Idempotency-Key`.
+
+**Agent demo:** From repo root run `.\run-agent-demo.ps1` (requires `docker compose up postgres ingest`). Creates a test package with anonymized payload and sends it to Ingest. See **docs/AGENT-DEMO-RUN.md**.
+
+**Tests / checks:** `install/preflight.ps1` (environment + optional release verification), `install/test-run.ps1` (post-install check), `build/verify-release.ps1` (ZIP + manifest signature), `agent/tools/diagnostics.ps1` (outbox, queue, archive, logs). Demo flow exercises the full agent → Ingest path.
+
+Full details: **docs/AGENT-ARCHITECTURE.md**. Ingest contract and SaaS proxy: **docs/AGENT-INGEST-OVERVIEW.md**.
 
 ---
 
@@ -121,7 +149,11 @@ cp .env.example .env
 
 # 3. Start
 docker-compose up --build
+```
 
+**Important — data safety:** To avoid losing clients and data, **do not** run `docker compose down -v` unless you intend to reset the database. Use `docker compose down` (without `-v`) to stop containers and keep data. Before any risky operation, run `.\backup-db.ps1` to create a backup (see [docs/DATA-SAFETY.md](docs/DATA-SAFETY.md)).
+
+```bash
 # 4. Access
 # Frontend:      http://localhost:5173
 # API docs:      http://localhost:8000/docs

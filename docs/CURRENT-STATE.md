@@ -119,6 +119,24 @@
 
 ---
 
+## Ingest Service и демо агента
+
+- **Ingest** — отдельный сервис (Node.js/TypeScript, `server/ingest/`) в docker-compose; порт 8080. Принимает POST `/api/v1/ingest/packages` (ZIP + заголовки X-API-Key, X-Summit-Client-Org-Id, X-Summit-Package-Hash-SHA256, X-Idempotency-Key, X-Summit-Agent-Version). Проверяет: хеш ZIP, наличие и валидность `manifest.json` (в т.ч. `compliance.sanitized=true`, `raw_logs_included=false`), при необходимости подпись (SIGNING_REQUIRED). Сохраняет квитанции в БД; дубликаты по idempotency_key возвращают тот же receipt.
+- **Демо агента:** скрипт `run-agent-demo.ps1` в корне репо: создаёт конфиг в `.agent-demo/`, выставляет tenant `client_org_id` для Valley Creek, создаёт тестовый пакет (manifest + анонимизированный payload через `agent/tools/create-test-package.ps1`) и отправляет его через `resend-outbox.ps1` в Ingest. Успешный приём → архив в `.agent-demo/archive/accepted/`. Инструкция: **docs/AGENT-DEMO-RUN.md**.
+- **Анонимизация в демо:** пакет содержит только обобщённые данные (hostname REDACTED, ip_removed, без PII); при несоответствии манифеста (например UTF-8 BOM в JSON) Ingest возвращает 422 (INVALID_MANIFEST) — в create-test-package JSON пишется без BOM.
+
+---
+
+## Тесты и проверки
+
+- **install/test-run.ps1** — проверка установки агента (конфиг, пути, задачи).
+- **install/preflight.ps1** — проверка окружения перед установкой (PowerShell, права, execution policy, конфиг); опционально верификация релиза по манифесту и подписи.
+- **build/verify-release.ps1** — проверка целостности релиза (ZIP hash, подпись манифеста).
+- **agent/tools/diagnostics.ps1** — диагностика состояния агента (outbox, очередь, архив, задачи, логи); вывод в консоль или JSON.
+- **Демо-сценарий:** `run-agent-demo.ps1` создаёт пакет → resend-outbox отправляет в Ingest → при успехе пакет принимается (receipt_id), при ошибке — TERMINAL_REJECTED и архив в rejected. Используется для проверки цепочки агент → Ingest и анонимизации.
+
+---
+
 ## Next Layer (AI Evidence & Concierge — в работе)
 
 Спецификация следующего модуля: **AI Evidence Validation & Client Concierge** (Claude Analyst + ChatGPT Concierge, задачи клиенту, агрегаты по контролю). Полное ТЗ — в папке **docs/next layer/** (.docx) и сводка — **docs/NEXT-LAYER-SPEC-SUMMARY.md**. В репозитории добавлены: модели БД (evidence_extractions, evidence_assessment_results, control_evidence_aggregates, client_tasks, assistant_message_logs), миграция 008, Pydantic-схемы и **заглушки API** (`/api/v1/evidence/{id}/extract`, `/analyze`, `/assessments/.../evidence-aggregates`, `/tasks`, `/assistant/chat`). Реализация pipeline (extraction → Claude → aggregate → task orchestrator → ChatGPT) — по плану в разделе 9 Implementation Plan.
@@ -150,4 +168,4 @@ docker-compose up --build
 
 ---
 
-*Документ описывает состояние на момент добавления roadmap LLM (см. ROADMAP-LLM-EVIDENCE.md).*
+*Документ обновлён: добавлены Ingest, демо агента и раздел тестов/проверок.*

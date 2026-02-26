@@ -164,9 +164,88 @@ function Invoke-SummitUpload {
             -RawResponse ([pscustomobject]@{ errors = @($cfgErrs) }))
     }
 
-    # Existing HTTP upload logic (idempotency, sign, POST, parse response) continues here.
-    # When implemented, return New-SummitUploadResultObject with Mode "HTTP", Status ACCEPTED/REJECTED, etc.
-    return $null
+    # HTTP upload to Ingest Service
+    $endpoint = [string]$Context.RuntimeCfg.upload.endpoint_url.TrimEnd('/')
+    $apiKey = [string]$Context.RuntimeCfg.upload.api_key
+    $clientOrgId = [string]$Context.RuntimeCfg.client_org_id
+    $agentVersion = [string]$Context.RuntimeCfg.agent_version
+    if ([string]::IsNullOrWhiteSpace($agentVersion)) { $agentVersion = "0.1.0-mvp" }
+
+    $zipBytes = $null
+    if ([string]::IsNullOrWhiteSpace($PackagePath) -or -not (Test-Path -LiteralPath $PackagePath)) {
+        return (New-SummitUploadResultObject -Mode "LOCAL" -HttpStatus 0 -Status "REJECTED" -Success $false -Duplicate $false -Retryable $false `
+            -ReceiptId $null -ErrorCode "PACKAGE_FILE_MISSING" -Message "Package path missing or file not found" `
+            -RequestId (New-SummitRequestId -Prefix "pkg") -IdempotencyKey $IdempotencyKey -PackageHashSha256 $PackageHashSha256 -RawResponse $null)
+    }
+    try {
+        $zipBytes = [System.IO.File]::ReadAllBytes($PackagePath)
+    } catch {
+        if (Get-Command Write-AgentLog -ErrorAction SilentlyContinue) {
+            Write-AgentLog -Level ERROR -Message ("Failed to read package: {0}" -f $_.Exception.Message) -LogFilePath $Context.LogFilePath
+        }
+        return (New-SummitUploadResultObject -Mode "LOCAL" -HttpStatus 0 -Status "REJECTED" -Success $false -Duplicate $false -Retryable $false `
+            -ReceiptId $null -ErrorCode "PACKAGE_READ_FAILED" -Message $_.Exception.Message `
+            -RequestId (New-SummitRequestId -Prefix "pkg") -IdempotencyKey $IdempotencyKey -PackageHashSha256 $PackageHashSha256 -RawResponse $null)
+    }
+
+    $hashHex = $PackageHashSha256
+    if ([string]::IsNullOrWhiteSpace($hashHex)) {
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        $hashBytes = $sha.ComputeHash($zipBytes)
+        $hashHex = [BitConverter]::ToString($hashBytes).Replace("-", "").ToLowerInvariant()
+    }
+
+    $uri = "$endpoint/api/v1/ingest/packages"
+    $headers = @{
+        "Content-Type"                = "application/zip"
+        "X-API-Key"                   = $apiKey
+        "X-Summit-Client-Org-Id"     = $clientOrgId
+        "X-Summit-Package-Hash-SHA256" = $hashHex
+        "X-Idempotency-Key"          = $IdempotencyKey
+        "X-Summit-Agent-Version"     = $agentVersion
+        "X-Request-Id"               = (New-SummitRequestId -Prefix "req")
+    }
+
+    try {
+        $response = Invoke-WebRequest -Uri $uri -Method POST -Headers $headers -Body $zipBytes -UseBasicParsing -TimeoutSec 60
+        $statusCode = [int]$response.StatusCode
+        $body = $null
+        try { $body = $response.Content | ConvertFrom-Json } catch { }
+
+        $receiptId = $null
+        if ($response.Headers["X-Receipt-Id"]) { $receiptId = [string]$response.Headers["X-Receipt-Id"] }
+        if ($body -and $body.receipt_id) { $receiptId = [string]$body.receipt_id }
+
+        $status = "ACCEPTED"
+        if ($body -and $body.status) { $status = [string]$body.status }
+        $duplicate = $false
+        if ($body -and $null -ne $body.duplicate) { $duplicate = [bool]$body.duplicate }
+
+        return (New-SummitUploadResultObject -Mode "HTTP" -HttpStatus $statusCode -Status $status -Success ($statusCode -ge 200 -and $statusCode -lt 300) `
+            -Duplicate $duplicate -Retryable $false -ReceiptId $receiptId -ErrorCode $null -Message $null `
+            -RequestId $headers["X-Request-Id"] -IdempotencyKey $IdempotencyKey -PackageHashSha256 $hashHex -RawResponse $body)
+    } catch [System.Net.WebException] {
+        $statusCode = 0
+        $body = $null
+        if ($_.Exception.Response) {
+            $statusCode = [int]$_.Exception.Response.StatusCode
+            $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+            try {
+                $json = $reader.ReadToEnd()
+                if ($json) { $body = $json | ConvertFrom-Json }
+            } catch { }
+            $reader.Close()
+        }
+        $code = "UPLOAD_ERROR"
+        $msg = $_.Exception.Message
+        if ($body -and $body.code) { $code = [string]$body.code }
+        if ($body -and $body.message) { $msg = [string]$body.message }
+        $retryable = ($statusCode -ge 500 -or $statusCode -eq 429)
+        $receiptId = $null
+        if ($_.Exception.Response -and $_.Exception.Response.Headers["X-Receipt-Id"]) { $receiptId = [string]$_.Exception.Response.Headers["X-Receipt-Id"] }
+        return (New-SummitUploadResultObject -Mode "HTTP" -HttpStatus $statusCode -Status "REJECTED" -Success $false -Duplicate $false -Retryable $retryable `
+            -ReceiptId $receiptId -ErrorCode $code -Message $msg -RequestId $headers["X-Request-Id"] -IdempotencyKey $IdempotencyKey -PackageHashSha256 $hashHex -RawResponse $body)
+    }
 }
 
 Export-ModuleMember -Function `
