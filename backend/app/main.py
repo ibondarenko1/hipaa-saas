@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.routes import auth, tenants, frameworks, audit, assessments, answers, evidence, engine, reports, templates, training, notifications, internal, workforce
+from app.api.routes import auth, tenants, frameworks, audit, assessments, answers, evidence, engine, reports, templates, training, notifications, internal, workforce, ingest, ai_evidence
+from app.api.internal.ingest_proxy import router as ingest_proxy_router
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -44,7 +45,10 @@ app.include_router(templates.router, prefix="/api/v1")
 app.include_router(training.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(workforce.router, prefix="/api/v1")
+app.include_router(ingest.router, prefix="/api/v1")
 app.include_router(internal.router, prefix="/api/v1")
+app.include_router(ingest_proxy_router, prefix="/api/v1")
+app.include_router(ai_evidence.router, prefix="/api/v1")
 
 
 @app.get("/health")

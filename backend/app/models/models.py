@@ -38,6 +38,7 @@ class Tenant(Base):
     location_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False)
     onboarding_step: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    client_org_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # ingest agent org id (clinic → client_org_id)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -491,3 +492,13 @@ class AuditEvent(Base):
 from app.models.training import TrainingModule, TrainingAssignment, TrainingCompletion, TrainingQuestion  # noqa: E402
 # Workforce (employees, employee assignments, certificates; import so Alembic sees them)
 from app.models.workforce import Employee, EmployeeTrainingAssignment, TrainingCertificate, WorkforceImportLog  # noqa: E402
+# Ingest receipts (agent package ingest persistence)
+from app.models.ingest import IngestReceipt  # noqa: E402
+# AI Evidence Validation & Client Concierge (Next Layer)
+from app.models.ai_evidence import (  # noqa: E402
+    EvidenceExtraction,
+    EvidenceAssessmentResult,
+    ControlEvidenceAggregate,
+    ClientTask,
+    AssistantMessageLog,
+)

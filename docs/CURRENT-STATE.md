@@ -7,7 +7,7 @@
 ## Репозиторий и агент
 
 - **Единственный репозиторий:** `hipaa-saas`. Всё (веб-платформа, бэкенд, фронтенд, локальный агент) живёт в нём.
-- **summit-local-agent** — это не отдельный репо, а **имя продукта/пакета** локального агента, входящего в этот репозиторий. Код агента: `agent/`, установка и сборка: `install/`, `build/`, `deploy/`. Релиз собирается как архив `summit-local-agent-v<version>.zip`.
+- **summit-local-agent** — это не отдельный репо, а **имя продукта/пакета** локального агента, входящего в этот репозиторий. Код агента: `agent/`, установка и сборка: `install/`, `build/`, `deploy/`. Релиз собирается как архив `summit-local-agent-v<version>.zip`. **Архитектура агента** (компоненты, конфиг, потоки данных, задачи): см. **docs/AGENT-ARCHITECTURE.md**.
 
 ---
 
@@ -116,6 +116,12 @@
 
 - JWT, роли internal_user / client_user, привязка к тенанту (membership).
 - Аудит: логирование событий (evidence_uploaded, report_download, login, и т.д.) с user_id, tenant_id, entity_type, entity_id, payload, IP.
+
+---
+
+## Next Layer (AI Evidence & Concierge — в работе)
+
+Спецификация следующего модуля: **AI Evidence Validation & Client Concierge** (Claude Analyst + ChatGPT Concierge, задачи клиенту, агрегаты по контролю). Полное ТЗ — в папке **docs/next layer/** (.docx) и сводка — **docs/NEXT-LAYER-SPEC-SUMMARY.md**. В репозитории добавлены: модели БД (evidence_extractions, evidence_assessment_results, control_evidence_aggregates, client_tasks, assistant_message_logs), миграция 008, Pydantic-схемы и **заглушки API** (`/api/v1/evidence/{id}/extract`, `/analyze`, `/assessments/.../evidence-aggregates`, `/tasks`, `/assistant/chat`). Реализация pipeline (extraction → Claude → aggregate → task orchestrator → ChatGPT) — по плану в разделе 9 Implementation Plan.
 
 ---
 
