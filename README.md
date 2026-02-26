@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" />
 </p>
 
-> A multi-tenant SaaS platform for HIPAA Security Rule readiness assessments — built by **Summit Range Consulting**. Covers the full compliance lifecycle: questionnaire → evidence → engine → report package.
+> A multi-tenant SaaS platform for HIPAA Security Rule readiness assessments — built by **Summit Range Consulting**. Covers the full compliance lifecycle: questionnaire → evidence → engine → report package. This **single repo** also includes **summit-local-agent** (local Windows agent for evidence ingest): code in `agent/`, install/build in `install/`, `build/`, `deploy/`.
 
 ---
 
@@ -175,6 +175,130 @@ Full interactive documentation available at `http://localhost:8000/docs` (Swagge
 | `ANTHROPIC_API_KEY` | ❌ | Claude API key for AI executive narratives |
 | `LLM_ENABLED` | ❌ | `true` to enable AI narratives (default: `false`) |
 | `DEBUG` | ❌ | `true` for development mode |
+
+---
+
+## Archive Retention Cleanup (MVP)
+
+The script `agent/tools/cleanup-archive.ps1` cleans the outbox archive by the retention policy in `archival.retention` (e.g. `accepted_days`, `rejected_days`). It supports **-DryRun** and can remove empty month folders with **-RemoveEmptyFolders**. Recommended: run once per day via a Scheduled Task (see `install/install.ps1`).
+
+---
+
+## Operator Diagnostics Command
+
+`agent/tools/diagnostics.ps1` collects a summary of outbox state, queue states (counts and recent items), archive (accepted/rejected), scheduled tasks, and recent log tails. Use it as the first diagnostic command for MSP support.
+
+- **-SummaryOnly** — counts and high-level info only (no recent items or log tails).
+- **-AsJson** — output as JSON for scripting or tickets (e.g. `.\agent\tools\diagnostics.ps1 -AsJson > diag.json`).
+- **-BaseDir** / **-ConfigPath** — override runtime paths if the agent is installed elsewhere.
+
+---
+
+## Build Release
+
+From the repo root:
+
+```powershell
+.\build\package-release.ps1 -Version 0.1.0-mvp
+```
+
+Use `-CleanOutput` to clear the output folder before building. Output is written to `release/` by default: ZIP, `.sha256.txt`, and `.manifest.json`.
+
+---
+
+## Run preflight (recommended)
+
+Before installing, run the preflight script to check PowerShell version, admin rights, execution policy, ScheduledTasks module, write access to `C:\ProgramData\SummitAgent`, required files, and config:
+
+```powershell
+.\install\preflight.ps1
+```
+
+**Preflight with release verification**
+
+```powershell
+.\install\preflight.ps1 `
+  -VerifyReleaseManifest `
+  -ReleaseManifestPath ..\summit-local-agent-v0.1.0-mvp.manifest.json `
+  -PublisherKeyPath ..\build\publisher-signing.key.txt
+```
+
+**JSON output (for MSP ticketing / support)**
+
+```powershell
+.\install\preflight.ps1 -AsJson > .\preflight-report.json
+```
+
+---
+
+## Install from Release
+
+1. Unzip the release bundle.
+2. Edit `config\agent.config.template.json` (or create the runtime config in `C:\ProgramData\SummitAgent`). For MSP deployments, use **deploy/profiles/** (small-clinic, mid-clinic, test-lab): copy a profile’s `ENV.template.ps1` → `ENV.ps1`, fill secrets, then run that profile’s `install-run.ps1` as Administrator.
+3. Run as Administrator (preflight runs automatically):
+
+   ```powershell
+   .\install\install.ps1
+   ```
+
+   To skip preflight (not recommended): `.\install\install.ps1 -SkipPreflight`
+
+4. Validate:
+
+   ```powershell
+   .\install\test-run.ps1
+   .\agent\tools\diagnostics.ps1 -SummaryOnly
+   ```
+
+---
+
+## Verify Package Integrity
+
+After downloading a release, verify the ZIP with the provided checksum:
+
+```powershell
+Get-FileHash .\release\summit-local-agent-v0.1.0-mvp.zip -Algorithm SHA256
+```
+
+Compare the hash with the contents of `summit-local-agent-v0.1.0-mvp.sha256.txt`.
+
+---
+
+## Signed release and verification
+
+The manifest can be signed with HMAC-SHA256 (publisher integrity). Do not commit the publisher key; keep it outside the repo.
+
+**Create a signed release**
+
+```powershell
+# 1) One-time: create publisher secret (DO NOT COMMIT)
+Copy-Item .\build\publisher-signing.key.template.txt .\build\publisher-signing.key.txt
+# Edit publisher-signing.key.txt and replace with a long random secret (>=32 chars)
+
+# 2) Build signed release
+.\build\package-release.ps1 -Version 0.1.0-mvp -CleanOutput -SignManifest -PublisherKeyId publisher-dev-01
+```
+
+**Verify release (ZIP hash + manifest signature)**
+
+```powershell
+.\build\verify-release.ps1 `
+  -ManifestPath .\release\summit-local-agent-v0.1.0-mvp.manifest.json `
+  -VerifySignature `
+  -PublisherKeyPath .\build\publisher-signing.key.txt
+```
+
+**Install with verification (optional)**
+
+Before running install, you can require that the release manifest and ZIP pass verification:
+
+```powershell
+.\install\install.ps1 -VerifyReleaseManifest `
+  -ReleaseManifestPath ..\summit-local-agent-v0.1.0-mvp.manifest.json `
+  -PublisherKeyPath ..\build\publisher-signing.key.txt
+```
+
+If you omit `-ReleaseManifestPath`, install will try to find a single `*.manifest.json` in the parent folder.
 
 ---
 
