@@ -19,7 +19,7 @@ app.add_middleware(
         "http://0.0.0.0:5173",
         "http://192.168.40.189:5173",
     ],
-    allow_origin_regex=r"(http://192\.168\.\d+\.\d+:5173|https://[a-z0-9-]+\.loca\.lt)",  # LAN + localtunnel
+    allow_origin_regex=r"(http://192\.168\.\d+\.\d+:5173|https://[a-z0-9-]+\.loca\.lt|https://[a-z0-9-]+\.ngrok-free\.app|https://[a-z0-9-]+\.ngrok\.io|https://[a-z0-9-]+\.trycloudflare\.com)",  # LAN + localtunnel + ngrok
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

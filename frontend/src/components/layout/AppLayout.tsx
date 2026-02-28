@@ -8,6 +8,8 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { NotificationBell } from '../NotificationBell'
+import { ClientNotesBell } from '../ClientNotesBell'
+import { AssistantChat } from '../AssistantChat'
 import clsx from 'clsx'
 
 // ── Logo ───────────────────────────────────────────────────────────────────────
@@ -148,7 +150,10 @@ function Topbar({ title, subtitle, tenantId }: { title?: string; subtitle?: stri
       </div>
       <div className="flex items-center gap-2">
         {tenantId ? (
-          <NotificationBell tenantId={tenantId} />
+          <>
+            <ClientNotesBell tenantId={tenantId} />
+            <NotificationBell tenantId={tenantId} />
+          </>
         ) : (
           <button className="p-2 rounded-lg hover:bg-white/5 text-slate-500 hover:text-slate-300 transition-colors relative" aria-hidden>
             <Bell size={16} />
@@ -159,11 +164,25 @@ function Topbar({ title, subtitle, tenantId }: { title?: string; subtitle?: stri
   )
 }
 
+const SIDEBAR_WIDTH = 224
+
 const layoutStyles = {
   wrapper: { display: 'flex', height: '100vh', overflow: 'hidden', backgroundColor: '#050d1a', color: '#e2e8f0' as const },
-  sidebar: { width: 224, flexShrink: 0, display: 'flex', flexDirection: 'column' as const, backgroundColor: '#0a1628', borderRight: '1px solid rgba(59,130,246,0.15)' },
-  main: { flex: 1, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden', backgroundColor: '#050d1a' },
-  mainContent: { flex: 1, overflowY: 'auto' as const, padding: 24 },
+  sidebar: {
+    position: 'fixed' as const,
+    left: 0,
+    top: 0,
+    width: SIDEBAR_WIDTH,
+    height: '100vh',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    backgroundColor: '#0a1628',
+    borderRight: '1px solid rgba(59,130,246,0.15)',
+    zIndex: 10,
+  },
+  sidebarSpacer: { width: SIDEBAR_WIDTH, flexShrink: 0 },
+  main: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden', backgroundColor: '#050d1a' },
+  mainContent: { flex: 1, overflowY: 'scroll' as const, padding: 24 },
 }
 
 // ── Internal Layout ────────────────────────────────────────────────────────────
@@ -171,8 +190,8 @@ export function InternalLayout() {
   const { user } = useAuth()
   return (
     <div className="flex h-screen overflow-hidden bg-navy-950" style={layoutStyles.wrapper}>
-      {/* Sidebar */}
-      <aside className="w-56 flex-shrink-0 flex flex-col bg-navy-900 border-r border-blue-500/08" style={layoutStyles.sidebar}>
+      {/* Sidebar — fixed so it never reflows on route change */}
+      <aside className="flex flex-col bg-navy-900 border-r border-blue-500/08" style={layoutStyles.sidebar}>
         <Logo />
         <div className="divider mx-3 my-0" />
         <div className="px-3 py-2">
@@ -184,16 +203,18 @@ export function InternalLayout() {
         <InternalSidebar />
         <UserFooter />
       </aside>
+      <div style={layoutStyles.sidebarSpacer} aria-hidden />
 
       {/* Main */}
       <main className="flex-1 flex flex-col overflow-hidden" style={layoutStyles.main}>
         <Topbar subtitle="Compliance pipeline · Client data → Gap analysis → Remediation → Report" />
-        <div className="flex-1 overflow-y-auto" style={layoutStyles.mainContent}>
+        <div className="flex-1 min-h-0" style={layoutStyles.mainContent}>
           <div className="p-6 animate-fade-in" style={{ padding: 24 }}>
             <Outlet />
           </div>
         </div>
       </main>
+      <AssistantChat contextType="internal" contextId="portal" />
     </div>
   )
 }
@@ -205,8 +226,8 @@ export function ClientLayout({ tenantId, tenantName }: {
 }) {
   return (
     <div className="flex h-screen overflow-hidden bg-navy-950" style={layoutStyles.wrapper}>
-      {/* Sidebar */}
-      <aside className="w-56 flex-shrink-0 flex flex-col bg-navy-900 border-r border-blue-500/08" style={layoutStyles.sidebar}>
+      {/* Sidebar — fixed so it never reflows on route change */}
+      <aside className="flex flex-col bg-navy-900 border-r border-blue-500/08" style={layoutStyles.sidebar}>
         <Logo />
         <div className="divider mx-3 my-0" />
         <div className="px-3 py-2">
@@ -219,16 +240,18 @@ export function ClientLayout({ tenantId, tenantName }: {
         <ClientSidebar tenantId={tenantId} />
         <UserFooter />
       </aside>
+      <div style={layoutStyles.sidebarSpacer} aria-hidden />
 
       {/* Main */}
       <main className="flex-1 flex flex-col overflow-hidden" style={layoutStyles.main}>
         <Topbar subtitle={tenantName ? `${tenantName} — Client Portal` : 'Client Portal'} tenantId={tenantId} />
-        <div className="flex-1 overflow-y-auto" style={layoutStyles.mainContent}>
+        <div className="flex-1 min-h-0" style={layoutStyles.mainContent}>
           <div className="p-6 animate-fade-in" style={{ padding: 24 }}>
             <Outlet />
           </div>
         </div>
       </main>
+      <AssistantChat contextType="tenant" contextId={tenantId} />
     </div>
   )
 }

@@ -53,6 +53,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: hipaa_backend
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://hipaa:hipaa@postgres:5432/hipaa
       DATABASE_URL_SYNC: postgresql://hipaa:hipaa@postgres:5432/hipaa
@@ -61,8 +63,10 @@ services:
       STORAGE_ACCESS_KEY: minioadmin
       STORAGE_SECRET_KEY: minioadmin
       STORAGE_BUCKET: hipaa-evidence
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Ключи AI только из env_file (.env), не из shell
       LLM_ENABLED: ${LLM_ENABLED:-false}
+      CHATGPT_CONCIERGE_ENABLED: "true"
+      CLAUDE_ANALYST_ENABLED: "true"
       DEBUG: ${DEBUG:-false}
       INGEST_BASE_URL: http://ingest:8080
       INGEST_API_KEY: ${INGEST_API_KEY:-demo-ingest-key}

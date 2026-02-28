@@ -8,7 +8,9 @@ Create Date: 2026-02-25
 from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+
+_UUID = PG_UUID(as_uuid=False)
 
 revision: str = "008_ai_evidence_module"
 down_revision: Union[str, None] = "007_tenant_client_org_id"
@@ -19,10 +21,10 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.create_table(
         "evidence_extractions",
-        sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("tenant_id", sa.String(36), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("assessment_id", sa.String(36), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("evidence_file_id", sa.String(36), sa.ForeignKey("evidence_files.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("tenant_id", _UUID, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("assessment_id", _UUID, sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("evidence_file_id", _UUID, sa.ForeignKey("evidence_files.id", ondelete="CASCADE"), nullable=False),
         sa.Column("status", sa.Text(), nullable=False, server_default="extract_pending"),
         sa.Column("extraction_result", JSONB(), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
@@ -35,12 +37,12 @@ def upgrade() -> None:
 
     op.create_table(
         "evidence_assessment_results",
-        sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("tenant_id", sa.String(36), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("assessment_id", sa.String(36), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("control_id", sa.String(36), sa.ForeignKey("controls.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("evidence_file_id", sa.String(36), sa.ForeignKey("evidence_files.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("extraction_id", sa.String(36), sa.ForeignKey("evidence_extractions.id", ondelete="SET NULL"), nullable=True),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("tenant_id", _UUID, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("assessment_id", _UUID, sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("control_id", _UUID, sa.ForeignKey("controls.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("evidence_file_id", _UUID, sa.ForeignKey("evidence_files.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("extraction_id", _UUID, sa.ForeignKey("evidence_extractions.id", ondelete="SET NULL"), nullable=True),
         sa.Column("provider", sa.Text(), nullable=False),
         sa.Column("model", sa.Text(), nullable=False),
         sa.Column("prompt_version", sa.Text(), nullable=False),
@@ -56,10 +58,10 @@ def upgrade() -> None:
 
     op.create_table(
         "control_evidence_aggregates",
-        sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("tenant_id", sa.String(36), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("assessment_id", sa.String(36), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("control_id", sa.String(36), sa.ForeignKey("controls.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("tenant_id", _UUID, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("assessment_id", _UUID, sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("control_id", _UUID, sa.ForeignKey("controls.id", ondelete="CASCADE"), nullable=False),
         sa.Column("status", sa.Text(), nullable=False),
         sa.Column("score", sa.Float(), nullable=True),
         sa.Column("evidence_count", sa.Integer(), nullable=False, server_default="0"),
@@ -72,18 +74,18 @@ def upgrade() -> None:
 
     op.create_table(
         "client_tasks",
-        sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("tenant_id", sa.String(36), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("assessment_id", sa.String(36), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("control_id", sa.String(36), sa.ForeignKey("controls.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("related_evidence_file_id", sa.String(36), sa.ForeignKey("evidence_files.id", ondelete="SET NULL"), nullable=True),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("tenant_id", _UUID, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("assessment_id", _UUID, sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("control_id", _UUID, sa.ForeignKey("controls.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("related_evidence_file_id", _UUID, sa.ForeignKey("evidence_files.id", ondelete="SET NULL"), nullable=True),
         sa.Column("task_type", sa.Text(), nullable=False),
         sa.Column("priority", sa.Text(), nullable=False, server_default="medium"),
         sa.Column("status", sa.Text(), nullable=False, server_default="open"),
         sa.Column("title", sa.Text(), nullable=False),
         sa.Column("message_to_client", sa.Text(), nullable=True),
         sa.Column("action_steps", JSONB(), nullable=True),
-        sa.Column("source_analysis_id", sa.String(36), sa.ForeignKey("evidence_assessment_results.id", ondelete="SET NULL"), nullable=True),
+        sa.Column("source_analysis_id", _UUID, sa.ForeignKey("evidence_assessment_results.id", ondelete="SET NULL"), nullable=True),
         sa.Column("task_fingerprint", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
@@ -94,9 +96,9 @@ def upgrade() -> None:
 
     op.create_table(
         "assistant_message_logs",
-        sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("tenant_id", sa.String(36), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("user_id", sa.String(36), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("id", _UUID, primary_key=True),
+        sa.Column("tenant_id", _UUID, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("user_id", _UUID, sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("channel", sa.Text(), nullable=False),
         sa.Column("context_type", sa.Text(), nullable=False),
         sa.Column("context_id", sa.Text(), nullable=False),

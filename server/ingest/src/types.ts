@@ -14,6 +14,8 @@ export type ReceiptRow = {
   received_at_utc: string;
   last_seen_at_utc: string;
   hit_count: number;
+  manifest_payload?: Record<string, unknown> | null;
+  snapshot_data?: Record<string, unknown> | null;
 };
 
 export type ErrorResponse = {

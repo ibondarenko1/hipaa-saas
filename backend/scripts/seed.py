@@ -374,7 +374,7 @@ async def seed():
         result = await db.execute(
             select(TrainingModule).where(TrainingModule.tenant_id == internal_tenant.id)
         )
-        if result.scalar_one_or_none() is None:
+        if result.scalars().first() is None:
             # Module 1: HIPAA Security Awareness Fundamentals (10 questions)
             m1 = TrainingModule(
                 tenant_id=internal_tenant.id,

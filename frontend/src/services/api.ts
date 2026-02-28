@@ -198,6 +198,51 @@ export const trainingApi = {
     api.get(`/tenants/${tenantId}/training/assignments/${assignmentId}/certificate`),
 }
 
+// ── Assistant (Next Layer — ChatGPT Concierge) ───────────────────────────────────
+export const assistantApi = {
+  chat: (data: {
+    context_type: string
+    context_id: string
+    message: string
+    assessment_id?: string | null
+    control_id?: string | null
+  }) =>
+    api.post<{
+      success: boolean
+      data: {
+        context_id: string
+        assistant_message: string
+        actionable_guidance?: object | null
+        task_suggestion?: { should_update_task?: boolean } | null
+        created_note_id?: string | null
+      }
+      error?: string | null
+    }>('/assistant/chat', data),
+}
+
+// ── Client notes (assistant alerts, red highlight) ───────────────────────────────
+export interface ClientNoteItem {
+  id: string
+  tenant_id: string
+  assessment_id: string | null
+  control_id: string | null
+  note_type: string
+  title: string
+  body: string
+  created_by: string
+  read_at: string | null
+  created_at: string
+}
+
+export const notesApi = {
+  list: (tenantId: string, params?: { assessment_id?: string; unread_only?: boolean; limit?: number; offset?: number }) =>
+    api.get<{ success: boolean; data: { items: ClientNoteItem[]; total: number }; error?: string }>('/notes', { params: { tenant_id: tenantId, ...params } }),
+  get: (noteId: string) =>
+    api.get<{ success: boolean; data: ClientNoteItem; error?: string }>(`/notes/${noteId}`),
+  markRead: (noteId: string) =>
+    api.patch<{ success: boolean; data: { id: string; read_at: string }; error?: string }>(`/notes/${noteId}/read`),
+}
+
 // ── Workforce ───────────────────────────────────────────────────────────────────
 export const workforceApi = {
   getEmployees: (tenantId: string) =>

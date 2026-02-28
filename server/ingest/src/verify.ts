@@ -7,6 +7,8 @@ export type VerifyOk = {
   manifestBytes: Buffer;
   manifestObj: any;
   sigObj: any | null;
+  /** Optional snapshot.json from package (for report context). */
+  snapshotData?: Record<string, unknown> | null;
 };
 
 export type VerifyFail = {
@@ -212,11 +214,24 @@ export function verifyZipAndManifest(params: {
     }
   }
 
+  // Optional: extract snapshot.json for report context (agent data in report)
+  let snapshotData: Record<string, unknown> | null = null;
+  try {
+    const snapshotEntry = zip.getEntry("snapshot.json");
+    if (snapshotEntry && !snapshotEntry.isDirectory) {
+      const raw = snapshotEntry.getData().toString("utf8");
+      snapshotData = JSON.parse(raw) as Record<string, unknown>;
+    }
+  } catch {
+    // ignore
+  }
+
   return {
     ok: true,
     zipSha256: computed,
     manifestBytes,
     manifestObj,
     sigObj,
+    snapshotData: snapshotData ?? undefined,
   };
 }

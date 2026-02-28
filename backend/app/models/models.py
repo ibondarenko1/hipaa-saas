@@ -496,9 +496,11 @@ from app.models.workforce import Employee, EmployeeTrainingAssignment, TrainingC
 from app.models.ingest import IngestReceipt  # noqa: E402
 # AI Evidence Validation & Client Concierge (Next Layer)
 from app.models.ai_evidence import (  # noqa: E402
+    ControlExpectationSpec,
     EvidenceExtraction,
     EvidenceAssessmentResult,
     ControlEvidenceAggregate,
     ClientTask,
+    ClientNote,
     AssistantMessageLog,
 )

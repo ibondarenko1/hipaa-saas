@@ -15,6 +15,7 @@ CLIENT_EVENT_TYPES = {
     "download_report_package", "download_report_file",
     "assessment_submitted", "assessment_status_changed",
     "login_success", "logout",
+    "client_note_created", "client_note_viewed",
 }
 
 

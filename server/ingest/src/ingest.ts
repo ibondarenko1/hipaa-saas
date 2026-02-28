@@ -14,6 +14,9 @@ export type IngestRequestHeaders = {
   agentVersion: string;
   signingKeyId?: string;
   requestId?: string;
+  /** Stored for report context (agent data in report). */
+  manifestPayload?: Record<string, unknown> | null;
+  snapshotData?: Record<string, unknown> | null;
 };
 
 export async function ingestPackage(headers: IngestRequestHeaders): Promise<{
@@ -30,7 +33,7 @@ export async function ingestPackage(headers: IngestRequestHeaders): Promise<{
     return { receipt: replayed, createdNew: false };
   }
 
-  // Create new receipt (ACCEPTED for now; validations wired in Step 4/6)
+  // Create new receipt (ACCEPTED; store manifest/snapshot for report context)
   const receipt_id = `ING-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${uuidv4().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
 
   await insertReceipt({
@@ -44,6 +47,8 @@ export async function ingestPackage(headers: IngestRequestHeaders): Promise<{
     error_code: null,
     message: null,
     server_request_id: headers.requestId ?? null,
+    manifest_payload: headers.manifestPayload ?? null,
+    snapshot_data: headers.snapshotData ?? null,
   });
 
   // Return the inserted row shape (minimal; fetched full row in route for consistency)

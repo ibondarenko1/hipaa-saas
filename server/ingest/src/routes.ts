@@ -129,7 +129,7 @@ export function buildRouter(): express.Router {
       });
     }
 
-    // Now ingest (will insert ACCEPTED or replay)
+    // Now ingest (will insert ACCEPTED or replay); pass payload for report context
     const { receipt, createdNew } = await ingestPackage({
       apiKey: "REDACTED",
       clientOrgId,
@@ -137,7 +137,9 @@ export function buildRouter(): express.Router {
       idempotencyKey: idemKey,
       agentVersion,
       signingKeyId: String(req.header("X-Summit-Signing-Key-Id") ?? "").trim() || undefined,
-      requestId
+      requestId,
+      manifestPayload: v.manifestObj ?? null,
+      snapshotData: v.snapshotData ?? null,
     });
 
     const full = await getReceiptById(receipt.receipt_id);

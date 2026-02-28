@@ -12,6 +12,7 @@ AI used only for narrative sections of Executive Summary.
 Human review required before publish (enforced by status workflow).
 """
 import io
+import json
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -34,6 +35,8 @@ from app.models.models import (
     RemediationAction, EvidenceLink, Control, Question, EvidenceFile
 )
 from app.core.config import settings
+from app.services.evidence_aggregator import recompute_control_aggregates
+from app.services.report_context_builder import build_full_report_context
 
 
 # ── Colour palette ─────────────────────────────────────────────────────────────
@@ -384,35 +387,24 @@ async def generate_evidence_checklist(
 
 # ── AI Narrative ───────────────────────────────────────────────────────────────
 
-async def generate_ai_narrative(
+def _build_legacy_prompt(
     tenant: Tenant,
     assessment: Assessment,
     stats: dict,
     top_gaps: list,
-    ai_tone: str = "neutral",
+    ai_tone: str,
 ) -> str:
-    """
-    Calls Anthropic Claude API for executive summary narrative.
-    Falls back to template if LLM not configured.
-    Per spec: AI used only for narrative, not for data.
-    """
-    if not settings.LLM_ENABLED or not settings.ANTHROPIC_API_KEY:
-        return _template_narrative(tenant, assessment, stats, top_gaps)
+    """Legacy prompt (stats + top_gaps only). Used when full_context is not available."""
+    tone_instruction = {
+        "neutral": "Use a professional, neutral tone.",
+        "executive": "Use an executive-friendly tone. Focus on business risk and strategic priorities.",
+        "plain_language": "Use simple, plain language. Avoid technical jargon. Assume non-technical readers.",
+    }.get(ai_tone, "Use a professional, neutral tone.")
 
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    critical_gaps = [g for g in top_gaps if g.severity == "Critical"]
+    high_gaps = [g for g in top_gaps if g.severity == "High"]
 
-        tone_instruction = {
-            "neutral": "Use a professional, neutral tone.",
-            "executive": "Use an executive-friendly tone. Focus on business risk and strategic priorities.",
-            "plain_language": "Use simple, plain language. Avoid technical jargon. Assume non-technical readers.",
-        }.get(ai_tone, "Use a professional, neutral tone.")
-
-        critical_gaps = [g for g in top_gaps if g.severity == "Critical"]
-        high_gaps = [g for g in top_gaps if g.severity == "High"]
-
-        prompt = f"""You are a HIPAA compliance expert writing an Executive Compliance Summary.
+    return f"""You are a HIPAA compliance expert writing an Executive Compliance Summary.
 
 Organization: {tenant.name}
 Assessment date: {assessment.submitted_at.strftime('%B %d, %Y') if assessment.submitted_at else 'N/A'}
@@ -442,17 +434,190 @@ Do NOT invent findings. Base everything strictly on the data provided.
 Do NOT use bullet points in the narrative — use flowing prose only.
 Keep it under 600 words."""
 
+
+def _build_full_analysis_prompt(context: dict, ai_tone: str) -> str:
+    """
+    Полный промпт с тремя источниками данных.
+    Использует реальные поля из ControlResult (engine_status, engine_rationale)
+    и ControlEvidenceAggregate (evidence_status, evidence_avg_strength, evidence_findings).
+    """
+    tenant = context["tenant"]
+    assessment = context["assessment"]
+    controls = context["controls"]
+    gaps = context["top_gaps"]
+    ev_summary = context["evidence_summary"]
+    prev = context.get("previous_assessment")
+
+    tone_map = {
+        "neutral": "Professional and objective tone.",
+        "formal": "Formal regulatory language appropriate for external auditors.",
+        "supportive": "Constructive and encouraging tone, focused on actionable improvement.",
+    }
+    tone_instruction = tone_map.get(ai_tone, tone_map["neutral"])
+
+    gap_controls = [c for c in controls if c["final_status"] == "gap"]
+    partial_controls = [c for c in controls if c["final_status"] == "partial"]
+
+    gap_lines = []
+    for c in gap_controls[:12]:
+        line = f"  [{c['engine_severity']}] {c['control_id']} — {c['control_name']}"
+        if c.get("engine_rationale"):
+            line += f"\n    Engine: {c['engine_rationale'][:120]}"
+        if c.get("evidence_findings"):
+            line += f"\n    Evidence findings: {'; '.join(str(f) for f in c['evidence_findings'][:2])}"
+        gap_lines.append(line)
+
+    gap_section = "\n".join(gap_lines) if gap_lines else "  None identified"
+
+    partial_lines = [
+        f"  {c['control_id']} — {c['control_name']}: "
+        f"evidence_strength={c.get('evidence_avg_strength') or 'n/a'}, "
+        f"engine={c['engine_status']}"
+        for c in partial_controls[:8]
+    ]
+    partial_section = "\n".join(partial_lines) if partial_lines else "  None"
+
+    delta_section = ""
+    if prev:
+        delta = assessment["score_percent"] - prev["score_percent"]
+        sign = "+" if delta >= 0 else ""
+        delta_section = f"""
+REMEDIATION PROGRESS (compared to previous assessment on {prev['assessment_date']}):
+  Previous score: {prev['score_percent']}%  →  Current score: {assessment['score_percent']}% ({sign}{delta}%)
+  Previous gap count: {prev['total_gaps']}  →  Current gap count: {assessment['gaps']}
+  Previously identified gaps (sample): {', '.join(prev.get('gap_descriptions', [])[:4])}
+"""
+
+    agent_section = ""
+    agent = context.get("agent_snapshot")
+    if agent:
+        received = agent.get("received_at_utc") or "unknown"
+        rid = agent.get("receipt_id") or ""
+        version = agent.get("agent_version") or ""
+        manifest = agent.get("manifest_payload") or {}
+        snapshot = agent.get("snapshot_data") or {}
+        manifest_str = json.dumps(manifest, ensure_ascii=False)[:1500] if manifest else "—"
+        snapshot_str = json.dumps(snapshot, ensure_ascii=False)[:2000] if snapshot else "—"
+        agent_section = f"""
+DATA FROM LOCAL AGENT (included in this report — do not ignore):
+  Last received: {received}
+  Receipt ID: {rid}
+  Agent version: {version}
+  Manifest (package metadata): {manifest_str}
+  Snapshot (anonymized agent-reported data): {snapshot_str}
+Use this block in your narrative: summarize what the agent reported and how it supports or contrasts with questionnaire and evidence. If no agent data is present above, skip the Agent-Reported Data section.
+"""
+
+    return f"""You are a senior HIPAA Security Rule compliance analyst preparing an Executive Compliance Summary.
+
+{tone_instruction}
+
+═══════════════════════════════════════════════
+ORGANIZATION: {tenant['name']}
+Assessment Date: {assessment.get('submitted_at') or 'Not specified'}
+═══════════════════════════════════════════════
+
+OVERALL COMPLIANCE SCORE: {assessment['score_percent']}%
+  Controls assessed:  {assessment['total_controls']}
+  Passed:             {assessment['passed']}
+  Partial compliance: {assessment['partial']}
+  Gaps identified:    {assessment['gaps']}
+
+EVIDENCE QUALITY SUMMARY (from AI document analysis):
+  Controls with uploaded evidence:  {ev_summary['controls_with_evidence']}
+  Strong / Adequate evidence:       {ev_summary['strong_adequate']}
+  Weak evidence:                    {ev_summary['weak']}
+  Insufficient / Mismatch:          {ev_summary['insufficient']}
+  Not analyzed (no upload):         {ev_summary['not_analyzed']}
+{delta_section}
+CONTROLS WITH GAPS ({len(gap_controls)} total):
+{gap_section}
+
+CONTROLS WITH PARTIAL COMPLIANCE ({len(partial_controls)} total):
+{partial_section}
+
+TOP PRIORITY GAPS BY SEVERITY:
+{chr(10).join(f"  [{g['severity'].upper()}] {g['description']}" + (f" → {g.get('recommended_remediation', '')}" if g.get('recommended_remediation') else '') for g in gaps[:8])}
+{agent_section}
+═══════════════════════════════════════════════
+WRITE AN EXECUTIVE COMPLIANCE SUMMARY with these sections:
+
+**Executive Summary** (3–4 sentences)
+Overall compliance posture, key risk level, most critical finding.
+
+**Compliance Score Analysis**
+Interpret {assessment['score_percent']}% in HIPAA regulatory context.
+What is the organization's exposure at this score level?
+
+**Evidence Quality Assessment**
+Comment on the strength of documentation provided.
+{ev_summary['strong_adequate']} controls have strong/adequate evidence.
+{ev_summary['weak']} controls have weak evidence that needs strengthening.
+{ev_summary['not_analyzed']} controls have no evidence uploaded.
+What does this mean for audit readiness?
+{"**Agent-Reported Data** — Summarize what the local clinic agent reported (see DATA FROM LOCAL AGENT above). How does it support or contrast with the questionnaire and evidence? If no agent data was provided, omit this section." if agent else ""}
+
+**Critical Findings**
+Top 3–5 gaps with HIPAA regulatory citations (45 CFR 164.xxx).
+For each: what is missing, what is the compliance risk.
+
+**Remediation Priorities**
+  Immediate (0–30 days): highest severity items
+  Short-term (30–90 days): high severity items
+  Ongoing: medium/low severity items
+{"**Progress Since Last Assessment**" + chr(10) + "Comment on improvements and remaining gaps." if prev else ""}
+
+Format: professional narrative paragraphs (no bullet points in main sections).
+Use the section headers exactly as shown above.
+Maximum 750 words total.
+═══════════════════════════════════════════════
+"""
+
+
+async def generate_ai_narrative(
+    tenant: Tenant,
+    assessment: Assessment,
+    stats: dict,
+    top_gaps: list,
+    ai_tone: str = "neutral",
+    full_context: dict | None = None,
+) -> str:
+    """
+    Calls Anthropic Claude API for executive summary narrative.
+    Если full_context передан — Claude получает полный контекст.
+    Если нет — fallback на legacy промпт (stats + top_gaps).
+    Falls back to template if LLM not configured or on error.
+    """
+    if not settings.LLM_ENABLED or not settings.ANTHROPIC_API_KEY:
+        return _template_narrative(tenant, assessment, stats, top_gaps)
+
+    try:
+        import anthropic
+        import logging
+
+        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+        if full_context:
+            prompt = _build_full_analysis_prompt(full_context, ai_tone)
+            max_tokens = 2000
+        else:
+            prompt = _build_legacy_prompt(tenant, assessment, stats, top_gaps, ai_tone)
+            max_tokens = 900
+
         message = client.messages.create(
             model=settings.LLM_MODEL,
-            max_tokens=900,
-            messages=[{"role": "user", "content": prompt}]
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
         )
         return message.content[0].text
 
     except Exception as e:
-        # Graceful fallback per spec: if AI unavailable, use template
-        return _template_narrative(tenant, assessment, stats, top_gaps) + \
-               f"\n\n[AI narrative unavailable: {e}]"
+        logging.getLogger(__name__).error(
+            "Claude API error in generate_ai_narrative: %s", e
+        )
+        return _template_narrative(tenant, assessment, stats, top_gaps) + (
+            f"\n\n[AI narrative unavailable: {e}]"
+        )
 
 
 def _template_narrative(tenant, assessment, stats, top_gaps) -> str:
@@ -526,7 +691,31 @@ async def generate_executive_summary(
     top_gaps = gaps_result.scalars().all()
     stats["gaps"] = len(top_gaps)
 
-    narrative = await generate_ai_narrative(tenant, assessment, stats, top_gaps, ai_tone)
+    if include_ai and getattr(settings, "LLM_ENABLED", False):
+        try:
+            await recompute_control_aggregates(
+                assessment_id=str(assessment.id),
+                tenant_id=str(assessment.tenant_id),
+                db=db,
+            )
+        except Exception:
+            pass
+
+    full_context = None
+    if include_ai and getattr(settings, "LLM_ENABLED", False):
+        try:
+            full_context = await build_full_report_context(
+                assessment_id=str(assessment.id),
+                tenant_id=str(assessment.tenant_id),
+                db=db,
+            )
+        except Exception:
+            full_context = None
+
+    narrative = await generate_ai_narrative(
+        tenant, assessment, stats, top_gaps, ai_tone,
+        full_context=full_context,
+    )
 
     # Build PDF
     buf = io.BytesIO()

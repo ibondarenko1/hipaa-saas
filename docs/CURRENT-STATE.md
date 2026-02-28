@@ -139,7 +139,14 @@
 
 ## Next Layer (AI Evidence & Concierge — в работе)
 
-Спецификация следующего модуля: **AI Evidence Validation & Client Concierge** (Claude Analyst + ChatGPT Concierge, задачи клиенту, агрегаты по контролю). Полное ТЗ — в папке **docs/next layer/** (.docx) и сводка — **docs/NEXT-LAYER-SPEC-SUMMARY.md**. В репозитории добавлены: модели БД (evidence_extractions, evidence_assessment_results, control_evidence_aggregates, client_tasks, assistant_message_logs), миграция 008, Pydantic-схемы и **заглушки API** (`/api/v1/evidence/{id}/extract`, `/analyze`, `/assessments/.../evidence-aggregates`, `/tasks`, `/assistant/chat`). Реализация pipeline (extraction → Claude → aggregate → task orchestrator → ChatGPT) — по плану в разделе 9 Implementation Plan.
+Спецификация: **docs/next layer/**, **docs/NEXT-LAYER-SPEC-SUMMARY.md**. Реализовано:
+
+- **Конфиг:** `CLAUDE_ANALYST_ENABLED`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `CHATGPT_CONCIERGE_ENABLED` (backend/app/core/config.py).
+- **Extraction:** сервис `evidence_extraction.py` — извлечение текста из PDF (pypdf), DOCX (python-docx), XLSX (openpyxl); состояние в `evidence_extractions` (extract_pending → extracting → extracted | extract_failed). API: POST `/api/v1/evidence/{id}/extract`, GET `/api/v1/evidence/{id}/extraction?assessment_id=...`.
+- **Control Expectation Spec:** модель `ControlExpectationSpec` (control_id, expected_document_types, required_elements, scoring_thresholds, guidance_text); миграция 009.
+- **Claude Analyst:** сервис `claude_analyst.py` — вызов Anthropic API, оценка evidence по контролю (status: validated | weak | mismatch | unreadable). API: POST `/api/v1/evidence/{id}/analyze` (body: assessment_id, control_id), GET `/api/v1/assessments/{id}/controls/{id}/evidence-results`.
+- **ChatGPT Concierge (чат ассистента):** сервис `concierge_chat.py` — вызов OpenAI Chat Completions; API POST `/api/v1/assistant/chat` (context_type, context_id, message; опционально assessment_id, control_id). В портале добавлено компактное окно чата: плавающая кнопка (справа внизу) открывает панель с историей сообщений и полем ввода; виджет встроен в Internal и Client layout.
+- Остаются заглушками: recompute-evidence-aggregates, evidence-aggregates, tasks CRUD. Реализация — по плану в разделе 9 Implementation Plan.
 
 ---
 
@@ -163,6 +170,8 @@ docker-compose up --build
 - Frontend: http://localhost:5173  
 - API docs: http://localhost:8000/docs  
 - MinIO console: http://localhost:9001  
+
+**Доступ из другого города (публичный URL):** см. **docs/expose-public.md** — ngrok, cloudflared или проброс порта.
 
 Тестовый логин: `admin@summitrange.com` / `Admin1234!`
 

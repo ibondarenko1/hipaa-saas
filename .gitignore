@@ -20,6 +20,11 @@ frontend/dist/
 build/publisher-signing.key.txt
 build/*.secret.txt
 
+# API keys / secrets (DO NOT COMMIT)
+**/your key.txt
+backend/your key.txt
+openai-key.txt
+
 # Local deployment secrets (DO NOT COMMIT)
 deploy/**/ENV.ps1
 deploy/**/ENV.local.ps1

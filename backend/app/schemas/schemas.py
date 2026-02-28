@@ -670,3 +670,47 @@ class WorkforceImportResultDTO(BaseModel):
     updated_count: int
     skipped_count: int
     errors: Optional[dict] = None
+
+
+# ── INGEST (Commit 31) ───────────────────────────────────────────────────────
+
+class IngestPackageRequest(BaseModel):
+    """Minimal body for POST /ingest/packages (idempotency by client_org_id + idempotency_key)."""
+    client_org_id: str
+    idempotency_key: str
+    package_hash_sha256: str
+    agent_version: Optional[str] = None
+    server_request_id: Optional[str] = None
+
+
+class ReceiptFullDTO(BaseModel):
+    receipt_id: str
+    client_org_id: str
+    status: str
+    duplicate: bool
+    idempotency_key: str
+    package_hash_sha256: str
+    agent_version: Optional[str] = None
+    received_at_utc: datetime
+    last_seen_at_utc: datetime
+    hit_count: int
+    error_code: Optional[str] = None
+    message: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ReceiptListItemDTO(BaseModel):
+    receipt_id: str
+    status: str
+    duplicate: bool
+    received_at_utc: datetime
+    agent_version: Optional[str] = None
+    error_code: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ReceiptListResponseDTO(BaseModel):
+    client_org_id: str
+    items: list[ReceiptListItemDTO]

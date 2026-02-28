@@ -1,0 +1,434 @@
+openapi: 3.0.3
+info:
+  title: Ingest Receipt API (Commit 31)
+  version: 0.1.0
+  description: Minimal ingest API — accept package (POST), list/get receipts (GET).
+
+servers:
+  - url: /api/v1
+    description: API base
+
+paths:
+  /ingest/packages:
+    post:
+      summary: Accept package (idempotent)
+      operationId: acceptPackage
+      tags: [Ingest]
+      requestBody:
+        required: true
+        content:
+          application/zip:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Receipt (replay)
+        '202':
+          description: Receipt (new)
+        '409':
+          description: IDEMPOTENCY_CONFLICT (same key, different hash)
+
+  /ingest/receipts/{receipt_id}:
+    get:
+      tags: [Ingest]
+      summary: Get receipt status by receipt_id
+      description: Returns a single ingest receipt record (accepted or rejected).
+      operationId: getIngestReceiptById
+      parameters:
+        - $ref: '#/components/parameters/XApiKey'
+        - name: receipt_id
+          in: path
+          required: true
+          description: Receipt identifier returned by ingest.
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+          example: ING-20260225-ABC123DEF456
+      responses:
+        '200':
+          description: Receipt found
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiptRecord'
+              examples:
+                receiptAccepted:
+                  $ref: '#/components/examples/ReceiptAccepted'
+                receiptRejected:
+                  $ref: '#/components/examples/ReceiptRejected'
+        '400':
+          description: Invalid request
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidRequest:
+                  $ref: '#/components/examples/ErrorInvalidRequest'
+        '401':
+          description: Authentication failed
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                unauthorized:
+                  $ref: '#/components/examples/ErrorUnauthorized'
+        '404':
+          description: Receipt not found
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                notFound:
+                  $ref: '#/components/examples/ErrorNotFound'
+        '500':
+          description: Internal server error
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /ingest/receipts:
+    get:
+      tags: [Ingest]
+      summary: List receipts by client_org_id
+      description: Returns the most recent receipts for a clinic/tenant (client_org_id).
+      operationId: listIngestReceiptsByClient
+      parameters:
+        - $ref: '#/components/parameters/XApiKey'
+        - name: client_org_id
+          in: query
+          required: true
+          description: Tenant/client organization identifier.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: '^[A-Za-z0-9._\-]+$'
+          example: demo-clinic-01
+        - name: limit
+          in: query
+          required: false
+          description: Max items to return (1..200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+          example: 50
+      responses:
+        '200':
+          description: Receipt list
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiptListResponse'
+              examples:
+                listExample:
+                  $ref: '#/components/examples/ReceiptListExample'
+        '400':
+          description: Invalid request
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidRequest:
+                  $ref: '#/components/examples/ErrorInvalidRequest'
+        '401':
+          description: Authentication failed
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                unauthorized:
+                  $ref: '#/components/examples/ErrorUnauthorized'
+        '500':
+          description: Internal server error
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  parameters:
+    XApiKey:
+      name: X-API-Key
+      in: header
+      required: true
+      description: API key for ingest authentication.
+      schema:
+        type: string
+        minLength: 1
+
+  headers:
+    XRequestId:
+      description: Server-assigned request id (echo or generated).
+      schema:
+        type: string
+        example: srv-req-4f2d9f3a
+
+  schemas:
+    IngestPackageRequest:
+      type: object
+      required: [client_org_id, idempotency_key, package_hash_sha256]
+      properties:
+        client_org_id:       { type: string }
+        idempotency_key:     { type: string }
+        package_hash_sha256: { type: string }
+        agent_version:       { type: string, nullable: true }
+        server_request_id:   { type: string, nullable: true }
+
+    ReceiptRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - receipt_id
+        - client_org_id
+        - idempotency_key
+        - package_hash_sha256
+        - agent_version
+        - status
+        - duplicate
+        - received_at_utc
+        - last_seen_at_utc
+        - hit_count
+      properties:
+        receipt_id:
+          type: string
+          minLength: 8
+          maxLength: 128
+        client_org_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        idempotency_key:
+          type: string
+          minLength: 8
+          maxLength: 256
+        package_hash_sha256:
+          type: string
+          pattern: '^[A-Fa-f0-9]{64}$'
+        agent_version:
+          type: string
+          minLength: 1
+          maxLength: 64
+        status:
+          type: string
+          enum: [ACCEPTED, REJECTED]
+        duplicate:
+          type: boolean
+        error_code:
+          type: string
+          nullable: true
+          maxLength: 256
+        message:
+          type: string
+          nullable: true
+          maxLength: 1024
+        server_request_id:
+          type: string
+          nullable: true
+          maxLength: 128
+        received_at_utc:
+          type: string
+          format: date-time
+        last_seen_at_utc:
+          type: string
+          format: date-time
+        hit_count:
+          type: integer
+          minimum: 1
+
+    ReceiptListItem:
+      type: object
+      additionalProperties: false
+      required:
+        - receipt_id
+        - status
+        - duplicate
+        - received_at_utc
+        - agent_version
+      properties:
+        receipt_id:
+          type: string
+          minLength: 8
+          maxLength: 128
+        status:
+          type: string
+          enum: [ACCEPTED, REJECTED]
+        duplicate:
+          type: boolean
+        received_at_utc:
+          type: string
+          format: date-time
+        agent_version:
+          type: string
+          minLength: 1
+          maxLength: 64
+        error_code:
+          type: string
+          nullable: true
+          maxLength: 256
+
+    ReceiptListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - client_org_id
+        - items
+      properties:
+        client_org_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReceiptListItem'
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [status, code, message]
+      properties:
+        status:
+          type: string
+          enum: [REJECTED, ERROR]
+        code:
+          type: string
+          enum:
+            - INVALID_REQUEST
+            - INVALID_HEADER_FORMAT
+            - MISSING_REQUIRED_HEADER
+            - UNAUTHORIZED
+            - FORBIDDEN_TENANT_ACCESS
+            - IDEMPOTENCY_CONFLICT
+            - PACKAGE_HASH_MISMATCH
+            - INVALID_ZIP
+            - MISSING_MANIFEST
+            - INVALID_MANIFEST
+            - MISSING_MANIFEST_SIGNATURE
+            - INVALID_MANIFEST_SIGNATURE
+            - UNSUPPORTED_MEDIA_TYPE
+            - PAYLOAD_TOO_LARGE
+            - TOO_MANY_REQUESTS
+            - SERVICE_UNAVAILABLE
+            - INTERNAL_ERROR
+            - NOT_FOUND
+        message:
+          type: string
+        request_id:
+          type: string
+          nullable: true
+        client_org_id:
+          type: string
+          nullable: true
+        idempotency_key:
+          type: string
+          nullable: true
+        details:
+          type: object
+          nullable: true
+
+  examples:
+    ReceiptAccepted:
+      value:
+        receipt_id: ING-20260225-ABC123DEF456
+        client_org_id: demo-clinic-01
+        idempotency_key: SUMMIT-demo-clinic-01-1A2B3C4D5E6F7890
+        package_hash_sha256: ABCD1234ABCD1234ABCD1234ABCD1234ABCD1234ABCD1234ABCD1234ABCD1234
+        agent_version: 0.1.0-mvp
+        status: ACCEPTED
+        duplicate: false
+        error_code: null
+        message: null
+        server_request_id: srv-req-4f2d9f3a
+        received_at_utc: '2026-02-25T21:10:00Z'
+        last_seen_at_utc: '2026-02-25T21:10:00Z'
+        hit_count: 1
+
+    ReceiptRejected:
+      value:
+        receipt_id: ING-20260225-REJ123ABC789
+        client_org_id: demo-clinic-01
+        idempotency_key: SUMMIT-demo-clinic-01-1A2B3C4D5E6F7890
+        package_hash_sha256: ABCD1234ABCD1234ABCD1234ABCD1234ABCD1234ABCD1234ABCD1234ABCD1234
+        agent_version: 0.1.0-mvp
+        status: REJECTED
+        duplicate: false
+        error_code: INVALID_MANIFEST_SIGNATURE
+        message: Manifest signature verification failed.
+        server_request_id: srv-req-4f2d9f3a
+        received_at_utc: '2026-02-25T21:12:00Z'
+        last_seen_at_utc: '2026-02-25T21:12:00Z'
+        hit_count: 1
+
+    ReceiptListExample:
+      value:
+        client_org_id: demo-clinic-01
+        items:
+          - receipt_id: ING-20260225-ABC123DEF456
+            status: ACCEPTED
+            duplicate: false
+            received_at_utc: '2026-02-25T21:10:00Z'
+            agent_version: 0.1.0-mvp
+            error_code: null
+          - receipt_id: ING-20260225-REJ123ABC789
+            status: REJECTED
+            duplicate: false
+            received_at_utc: '2026-02-25T21:12:00Z'
+            agent_version: 0.1.0-mvp
+            error_code: INVALID_MANIFEST_SIGNATURE
+
+    ErrorInvalidRequest:
+      value:
+        status: REJECTED
+        code: INVALID_REQUEST
+        message: client_org_id query param is required.
+        request_id: srv-req-4f2d9f3a
+
+    ErrorNotFound:
+      value:
+        status: REJECTED
+        code: NOT_FOUND
+        message: receipt_id not found.
+        request_id: srv-req-4f2d9f3a
+
+    ErrorUnauthorized:
+      value:
+        status: REJECTED
+        code: UNAUTHORIZED
+        message: Authentication failed.

@@ -16,6 +16,25 @@ def gen_uuid():
     return str(uuid.uuid4())
 
 
+class ControlExpectationSpec(Base):
+    """Per-control expectations for evidence (document types, required elements, scoring). Next Layer."""
+    __tablename__ = "control_expectation_specs"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    control_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("controls.id", ondelete="CASCADE"), nullable=False)
+    expected_document_types: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)  # e.g. ["policy", "procedure", "screenshot"]
+    required_elements: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)  # e.g. ["effective_date", "scope"]
+    scoring_thresholds: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)  # e.g. {"strong": 0.8, "weak": 0.4}
+    guidance_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    prompt_version: Mapped[str] = mapped_column(Text, nullable=False, default="1.0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index("ix_control_expectation_specs_control", "control_id"),
+    )
+
+
 class EvidenceExtraction(Base):
     """Result of text/structure extraction from an evidence file (input to Claude)."""
     __tablename__ = "evidence_extractions"
@@ -75,6 +94,8 @@ class ControlEvidenceAggregate(Base):
     score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     evidence_count: Mapped[int] = mapped_column(Integer, default=0)
     analysis_ids_used: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    avg_strength: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    findings_summary: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
@@ -108,6 +129,28 @@ class ClientTask(Base):
         Index("ix_client_tasks_tenant_status", "tenant_id", "status"),
         Index("ix_client_tasks_assessment", "assessment_id"),
         Index("ix_client_tasks_fingerprint", "task_fingerprint"),
+    )
+
+
+class ClientNote(Base):
+    """Note/alert for client from assistant (red highlight, visible). Audit: log_event on create and view."""
+    __tablename__ = "client_notes"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    tenant_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    assessment_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("assessments.id", ondelete="SET NULL"), nullable=True)
+    control_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("controls.id", ondelete="SET NULL"), nullable=True)
+    note_type: Mapped[str] = mapped_column(Text, nullable=False, default="action_required")  # action_required | missing_evidence | invalid_upload | info
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[str] = mapped_column(Text, nullable=False, default="assistant")  # assistant | user_id
+    read_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_client_notes_tenant", "tenant_id"),
+        Index("ix_client_notes_assessment", "assessment_id"),
+        Index("ix_client_notes_unread", "tenant_id", "read_at"),
     )
 
 

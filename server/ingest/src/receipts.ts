@@ -43,14 +43,17 @@ export async function insertReceipt(params: {
   error_code?: string | null;
   message?: string | null;
   server_request_id?: string | null;
+  manifest_payload?: Record<string, unknown> | null;
+  snapshot_data?: Record<string, unknown> | null;
 }): Promise<void> {
   const now = new Date().toISOString();
   await exec(
     `INSERT INTO ingest_receipts (
         receipt_id, client_org_id, idempotency_key, package_hash_sha256, agent_version,
         status, duplicate, error_code, message, server_request_id,
-        received_at_utc, last_seen_at_utc, hit_count
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        received_at_utc, last_seen_at_utc, hit_count,
+        manifest_payload, snapshot_data
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15::jsonb)`,
     [
       params.receipt_id,
       params.client_org_id,
@@ -65,6 +68,8 @@ export async function insertReceipt(params: {
       now,
       now,
       1,
+      params.manifest_payload ?? null,
+      params.snapshot_data ?? null,
     ]
   );
 }

@@ -1,4 +1,6 @@
+import os
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from functools import lru_cache
 
 
@@ -35,10 +37,27 @@ class Settings(BaseSettings):
         "image/jpeg",
     ]
 
-    # LLM (Anthropic Claude)
+    # LLM (Anthropic Claude) — reports narrative + AI Evidence Analyst. Только ANTHROPIC_*, не путать с OpenAI.
     ANTHROPIC_API_KEY: str = ""
     LLM_ENABLED: bool = False  # set True when key is configured
     LLM_MODEL: str = "claude-opus-4-6"
+    CLAUDE_ANALYST_ENABLED: bool = False  # Next Layer: evidence validation
+
+    # OpenAI (ChatGPT Concierge — чат ассистента). Только OPENAI_*, не путать с Anthropic.
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    CHATGPT_CONCIERGE_ENABLED: bool = False
+
+    @field_validator("OPENAI_API_KEY", mode="after")
+    @classmethod
+    def strip_openai_key(cls, v: str) -> str:
+        raw = (v or "").strip().lstrip("\ufeff")
+        first_line = raw.split("\n")[0].split("\r")[0].strip()
+        return first_line[:164]
+
+    # Ingest proxy (SaaS → ingest service)
+    INGEST_BASE_URL: str = ""
+    INGEST_API_KEY: str = ""
 
     # Submit gate
     SUBMIT_COMPLETENESS_THRESHOLD: float = 0.70
@@ -52,7 +71,8 @@ class Settings(BaseSettings):
     ]
 
     class Config:
-        env_file = ".env"
+        # В Docker не грузим .env из /app (backend) — только env из compose (корневой .env)
+        env_file = None if os.environ.get("OPENAI_API_KEY") else ".env"
         env_file_encoding = "utf-8"
 
 

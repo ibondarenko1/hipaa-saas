@@ -89,6 +89,30 @@ class ClientTaskPatchRequest(BaseModel):
 
 # ── Assistant Chat ───────────────────────────────────────────────────────────
 
+class ClientNoteDTO(BaseModel):
+    id: str
+    tenant_id: str
+    assessment_id: Optional[str] = None
+    control_id: Optional[str] = None
+    note_type: str
+    title: str
+    body: str
+    created_by: str
+    read_at: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ClientNoteCreateRequest(BaseModel):
+    assessment_id: Optional[str] = None
+    control_id: Optional[str] = None
+    note_type: str = "action_required"
+    title: str
+    body: str
+    created_by: str = "assistant"
+
+
 class AssistantChatRequest(BaseModel):
     context_type: str
     context_id: str
