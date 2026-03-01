@@ -2,15 +2,16 @@ import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   FileText, Download, CheckCircle2, Send, Play,
-  FileSpreadsheet, Globe, Lock, Building2, ArrowRight
+  FileSpreadsheet, Globe, Lock, Building2, ArrowRight, TrendingUp
 } from 'lucide-react'
 import { reportsApi, tenantsApi, assessmentsApi, engineApi } from '../../services/api'
-import { ReportPackageDTO, ReportFileDTO, TenantDTO, AssessmentDTO } from '../../types'
+import { ReportPackageDTO, ReportFileDTO, TenantDTO, AssessmentDTO, ComplianceTimelinePoint } from '../../types'
 import type { ControlResultDTO, GapDTO } from '../../types'
 import {
   PageLoader, SectionHeader, StatusBadge, EmptyState,
   Modal, Alert, Spinner
 } from '../../components/ui'
+import DashboardComplianceChart from '../../components/DashboardComplianceChart'
 import { format } from 'date-fns'
 
 const FILE_TYPE_LABELS: Record<string, string> = {
@@ -76,6 +77,14 @@ export default function InternalReports() {
   const [snapshotControls, setSnapshotControls] = useState<ControlResultDTO[]>([])
   const [snapshotGaps, setSnapshotGaps] = useState<GapDTO[]>([])
   const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null)
+  const [timeline, setTimeline] = useState<ComplianceTimelinePoint[]>([])
+
+  useEffect(() => {
+    if (!selectedTenant) return
+    reportsApi.getTimeline(selectedTenant)
+      .then(r => setTimeline(r.data?.timeline ?? []))
+      .catch(() => setTimeline([]))
+  }, [selectedTenant])
 
   useEffect(() => {
     tenantsApi.list().then(r => {
@@ -262,7 +271,21 @@ export default function InternalReports() {
         </div>
       )}
 
-      {/* Assessments with report packages */}
+      {/* Compliance Progress Over Time — график над отчётами */}
+      {!loading && selectedTenant && (
+        <div className="card p-5 border border-blue-500/20">
+          <h2 className="text-base font-semibold text-slate-200 mb-2 flex items-center gap-2">
+            <TrendingUp size={20} className="text-blue-400" />
+            Compliance Progress Over Time
+          </h2>
+          <p className="text-sm text-slate-500 mb-4">
+            Score history for each published report for <strong className="text-slate-400">{currentTenant?.name ?? 'this client'}</strong>. 80%+ indicates strong readiness.
+          </p>
+          <DashboardComplianceChart timeline={timeline} />
+        </div>
+      )}
+
+      {/* Assessments with report packages — боксы со скачиванием */}
       {loading ? <PageLoader /> : tenants.length > 0 && assessments.length === 0 ? (
         <div className="card p-6">
           <EmptyState
@@ -310,9 +333,14 @@ export default function InternalReports() {
 
                 {assessmentPackages.length > 0 ? (
                   <div className="p-5 space-y-3">
-                    <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">Report packages</p>
+                    <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">Report package (latest)</p>
                     <div className="space-y-2">
-                      {assessmentPackages.map(pkg => (
+                      {(() => {
+                        const latest = assessmentPackages.reduce((best, p) =>
+                          !best || (Number(p.package_version) > Number(best.package_version)) ? p : best
+                        )
+                        return [latest]
+                      })().map(pkg => (
                         <div key={pkg.id} className="rounded-lg bg-navy-800/40 border border-blue-500/08 overflow-hidden">
                           <div className="flex items-center justify-between py-2 px-3">
                             <div className="flex items-center gap-2">

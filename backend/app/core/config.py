@@ -1,7 +1,15 @@
 import os
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
 from functools import lru_cache
+
+# .env: ищем в корне проекта (родитель backend/), иначе в текущей директории
+_CONFIG_DIR = Path(__file__).resolve().parent
+_BACKEND_DIR = _CONFIG_DIR.parent.parent
+_PROJECT_ROOT = _BACKEND_DIR.parent
+_ENV_IN_ROOT = _PROJECT_ROOT / ".env"
+ENV_FILE = str(_ENV_IN_ROOT) if _ENV_IN_ROOT.exists() else ".env"
 
 
 class Settings(BaseSettings):
@@ -71,8 +79,8 @@ class Settings(BaseSettings):
     ]
 
     class Config:
-        # В Docker не грузим .env из /app (backend) — только env из compose (корневой .env)
-        env_file = None if os.environ.get("OPENAI_API_KEY") else ".env"
+        # .env из корня проекта или cwd; env vars переопределяют
+        env_file = ENV_FILE
         env_file_encoding = "utf-8"
 
 

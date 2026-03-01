@@ -20,6 +20,7 @@ from app.schemas.schemas import (
 )
 from app.services.audit import log_event
 from app.services.submit_gate import run_submit_gate
+from app.services.audit_workflow import initialize_workflow
 
 router = APIRouter(prefix="/tenants/{tenant_id}/assessments", tags=["assessments"])
 
@@ -128,6 +129,12 @@ async def create_assessment(
     )
     db.add(assessment)
     await db.flush()
+
+    await initialize_workflow(
+        assessment_id=str(assessment.id),
+        tenant_id=tenant_id,
+        db=db,
+    )
 
     await log_event(
         db, "assessment_created",

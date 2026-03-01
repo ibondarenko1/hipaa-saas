@@ -246,9 +246,12 @@ export default function ClientAssessment() {
           await answersApi.upsert(tenantId, assessment.id, questionId, valuePayload)
           setSaveStatus('saved')
           setTimeout(() => setSaveStatus('idle'), 2000)
-        } catch {
+        } catch (err: unknown) {
           setSaveStatus('idle')
-          toast.error('Failed to save answer')
+          const ax = err as { response?: { status?: number; data?: { detail?: string | unknown } } }
+          const detail = ax.response?.data?.detail
+          const msg = typeof detail === 'string' ? detail : Array.isArray(detail) ? (detail as { msg?: string }[]).map((e) => e?.msg ?? e).join(', ') : 'Failed to save answer'
+          toast.error(msg)
         }
       }, 1000)
     },

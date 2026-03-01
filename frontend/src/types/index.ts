@@ -261,6 +261,52 @@ export interface ReportFileDTO {
   created_at: string
 }
 
+// ── Workflow & Compliance Timeline (SESSION 8) ─────────────────────────────────
+export interface WorkflowStatus {
+  status: string
+  current_step: number
+  steps: Record<number, { name: string; status: string | null }>
+  checklist: { total: number; completed: number; pending: number; waiting_client: number }
+  ready_for_report: boolean
+}
+
+export interface AuditChecklistItemDTO {
+  id: string
+  control_id: string
+  required_evidence_id: string
+  artifact_name: string
+  artifact_type: string
+  required: boolean
+  hipaa_citation: string | null
+  has_template: boolean
+  template_control_id: string | null
+  is_self_attestable: boolean
+  attestation_checklist: string[] | null
+  status: string
+  client_response: string | null
+  client_responded_at: string | null
+  gap_reason: string | null
+  evidence_file_id: string | null
+}
+
+export interface ComplianceTimelinePoint {
+  id: string
+  assessment_id: string
+  report_package_id: string
+  score_percent: number
+  passed: number
+  partial: number
+  gaps: number
+  total_controls: number
+  self_attested_count: number
+  delta_score: number | null
+  gaps_closed: number | null
+  gaps_new: number | null
+  gaps_persisting: number | null
+  claude_delta_summary: string | null
+  published_at: string
+}
+
 // ── Audit ─────────────────────────────────────────────────────────────────────
 export interface AuditEventDTO {
   id: string

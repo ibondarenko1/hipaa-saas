@@ -581,22 +581,67 @@ async def create_note(
 
 # ── Claude Analyst (evidence) ───────────────────────────────────────────────────
 
+def _test_anthropic_api() -> tuple[bool, str | None, str | None]:
+    """
+    Минимальный вызов Anthropic API. Возвращает (usable, error_code, user_message).
+    error_code: insufficient_credits | invalid_api_key | rate_limit | other | None
+    """
+    from app.core.config import settings
+    k = (getattr(settings, "ANTHROPIC_API_KEY", "") or "").strip()
+    if not k:
+        return False, "no_key", "ANTHROPIC_API_KEY is not set."
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=k)
+        client.messages.create(
+            model=getattr(settings, "LLM_MODEL", "claude-sonnet-4-20250514"),
+            max_tokens=10,
+            messages=[{"role": "user", "content": "Reply with one word: OK"}],
+        )
+        return True, None, None
+    except Exception as e:
+        err_str = str(e).lower()
+        if "credit" in err_str or "balance" in err_str or "too low" in err_str:
+            return False, "insufficient_credits", (
+                "Anthropic account has insufficient credits. Go to console.anthropic.com → Plans & Billing to add credits."
+            )
+        if "invalid" in err_str or "authentication" in err_str or "401" in err_str:
+            return False, "invalid_api_key", "Invalid or revoked API key. Check ANTHROPIC_API_KEY in .env."
+        if "rate" in err_str or "429" in err_str:
+            return False, "rate_limit", "Anthropic rate limit exceeded. Try again later."
+        return False, "other", f"API error: {type(e).__name__}. Check backend logs for details."
+
+
 @router.get(
     "/claude/check",
     response_model=dict,
-    summary="Check Claude analyst config (no secret exposed)",
+    summary="Check Claude config and test API (no secret exposed)",
 )
 async def claude_check(
     current_user: User = Depends(get_current_user),
 ):
-    """GET /api/v1/claude/check — see if Claude analyst is configured."""
+    """
+    GET /api/v1/claude/check — ключ задан ли, и реально ли работает API.
+    При проблемах с биллингом/ключом сразу видно claude_usable=false и claude_error_message.
+    """
     from app.core.config import settings
     k = (settings.ANTHROPIC_API_KEY or "").strip()
-    return {
+    result = {
         "claude_analyst_enabled": bool(getattr(settings, "CLAUDE_ANALYST_ENABLED", False)),
         "anthropic_key_set": len(k) > 0,
         "key_length": len(k),
     }
+    if not k:
+        result["claude_usable"] = False
+        result["claude_error"] = "no_key"
+        result["claude_error_message"] = "ANTHROPIC_API_KEY is not set."
+        return result
+    usable, err_code, user_msg = _test_anthropic_api()
+    result["claude_usable"] = usable
+    if err_code:
+        result["claude_error"] = err_code
+        result["claude_error_message"] = user_msg
+    return result
 
 
 # ── Assistant Chat (ChatGPT Concierge) ──────────────────────────────────────────

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.routes import auth, tenants, frameworks, audit, assessments, answers, evidence, engine, reports, templates, training, notifications, internal, workforce, ingest, ai_evidence
+from app.api.routes import auth, tenants, frameworks, audit, assessments, answers, evidence, engine, reports, templates, training, notifications, internal, workforce, ingest, ai_evidence, workflow
 from app.api.internal.ingest_proxy import router as ingest_proxy_router
 
 app = FastAPI(
@@ -39,6 +39,7 @@ app.include_router(evidence.router, prefix="/api/v1")
 # Phase 3
 app.include_router(engine.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
+app.include_router(workflow.router, prefix="/api/v1")
 
 # Templates & Training
 app.include_router(templates.router, prefix="/api/v1")
@@ -53,4 +54,10 @@ app.include_router(ai_evidence.router, prefix="/api/v1")
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": settings.APP_VERSION}
+    """Health check. claude_configured = True if ANTHROPIC_API_KEY is set (Claude AI will be used)."""
+    claude_configured = bool((getattr(settings, "ANTHROPIC_API_KEY", "") or "").strip())
+    return {
+        "status": "ok",
+        "version": settings.APP_VERSION,
+        "claude_configured": claude_configured,
+    }

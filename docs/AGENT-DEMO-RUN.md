@@ -16,10 +16,7 @@ docker compose up -d postgres ingest
 Проверка: Ingest должен отвечать на хосте по порту 8080:
 
 ```powershell
-# PowerShell
-Invoke-WebRequest -Uri "http://localhost:8080/health" -UseBasicParsing | Select-Object StatusCode, Content
-# или curl
-curl -s http://localhost:8080/health
+Invoke-RestMethod -Uri "http://localhost:8080/health"
 ```
 
 Если запрос не доходит (connection refused / UPLOAD_ERROR в демо) — проверьте, что порт 8080 не занят и что контейнер `hipaa_ingest` запущен: `docker compose ps`.
@@ -46,14 +43,14 @@ curl -s http://localhost:8080/health
 - Квитанции Ingest:
 
 ```powershell
-curl -s -H "X-API-Key: demo-ingest-key" "http://localhost:8080/api/v1/ingest/receipts?client_org_id=valley-creek-demo&limit=5"
+Invoke-RestMethod -Uri "http://localhost:8080/api/v1/ingest/receipts?client_org_id=valley-creek-demo&limit=5" -Headers @{ "X-API-Key" = "demo-ingest-key" }
 ```
 
 - Архив принятых пакетов: `.agent-demo/archive/accepted/` (по месяцам). В ZIP — `manifest.json` и `anonymized_snapshot.json` с уже анонимизированным содержимым.
 
 ## 4. Если все пакеты в статусе UPLOAD_ERROR
 
-- Убедитесь, что Ingest доступен: `curl http://localhost:8080/health`.
+- Убедитесь, что Ingest доступен: `Invoke-RestMethod -Uri "http://localhost:8080/health"`.
 - Проверьте логи контейнера: `docker compose logs ingest`.
 - В очереди/квитанции в `.agent-demo/outbox` или `.agent-demo/archive/rejected/` в `*.queue.json` / `*.receipt.json` поле `last_error_message` покажет причину (например, connection refused).
 

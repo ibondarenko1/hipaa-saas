@@ -2,9 +2,9 @@ import React, { useEffect, useState, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Building2, FileText, CheckCircle2, XCircle, Download, Send,
-  FileDown, X
+  FileDown, X, MessageSquare
 } from 'lucide-react'
-import { tenantsApi, evidenceApi, assessmentsApi, notificationsApi } from '../../services/api'
+import { tenantsApi, evidenceApi, assessmentsApi, notificationsApi, reportsApi } from '../../services/api'
 import { hipaaEvidenceData } from '../../data/hipaaEvidence'
 import type { HIPAAControl } from '../../data/hipaaEvidence'
 import type { TenantDTO, EvidenceFileDTO } from '../../types'
@@ -253,6 +253,7 @@ export default function EvidenceReview() {
   const [filter, setFilter] = useState<'all' | 'pending' | 'accepted' | 'needs_update' | 'not_uploaded'>('all')
   const [showRequestModal, setShowRequestModal] = useState(false)
   const [requestPrefillControl, setRequestPrefillControl] = useState<HIPAAControl | null>(null)
+  const [claudeRequestsLoading, setClaudeRequestsLoading] = useState(false)
 
   useEffect(() => {
     tenantsApi.list().then(async (res) => {
@@ -333,6 +334,38 @@ export default function EvidenceReview() {
   const loadEvidence = () => {
     if (!selectedTenant) return
     evidenceApi.list(selectedTenant.id).then((r) => setEvidenceFiles(r.data || [])).catch(console.error)
+  }
+
+  const handleClaudeDocumentRequests = async () => {
+    if (!selectedTenant?.id || !assessment?.id) {
+      toast.error('Select a client with an assessment')
+      return
+    }
+    setClaudeRequestsLoading(true)
+    try {
+      const res = await reportsApi.requestClaudeDocumentRequests(selectedTenant.id, assessment.id)
+      const data = res.data as { requests?: unknown[]; notifications_created?: number; claude_used?: boolean }
+      const n = data?.notifications_created ?? 0
+      const claudeUsed = data?.claude_used ?? true
+      if (n > 0) {
+        toast.success(
+          claudeUsed
+            ? `Claude created ${n} document request(s). Client will see them in the notifications bell.`
+            : `${n} document request(s) created (from missing evidence). Client will see them in the bell.`
+        )
+      } else {
+        toast.success(
+          claudeUsed
+            ? 'Claude found no additional document requests needed.'
+            : 'No controls with missing evidence; no document requests created.'
+        )
+      }
+    } catch (e) {
+      console.error(e)
+      toast.error('Failed to get Claude document requests')
+    } finally {
+      setClaudeRequestsLoading(false)
+    }
   }
 
   const handleAccept = async (fileId: string, _controlName: string) => {
@@ -458,7 +491,21 @@ export default function EvidenceReview() {
                   <h1 className="text-xl font-bold text-slate-100">{selectedTenant.name}</h1>
                   <p className="text-slate-500 text-sm">Evidence Review</p>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex gap-3 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleClaudeDocumentRequests}
+                    disabled={!assessment?.id || claudeRequestsLoading}
+                    className="btn-primary text-sm"
+                    title="Claude analyzes questionnaire + evidence + agent data and creates document requests for the client. Client sees them in the notifications bell."
+                  >
+                    {claudeRequestsLoading ? (
+                      <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-1 align-middle" />
+                    ) : (
+                      <MessageSquare size={14} className="mr-1" />
+                    )}
+                    Ask Claude for document requests
+                  </button>
                   <button type="button" onClick={exportEvidenceList} className="btn-secondary text-sm">
                     <Download size={14} className="mr-1" /> Export List
                   </button>

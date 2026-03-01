@@ -2,14 +2,16 @@ import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   FileText, Download, CheckCircle2, Clock, Lock,
-  FileSpreadsheet, ShieldCheck
+  FileSpreadsheet, ShieldCheck, TrendingUp
 } from 'lucide-react'
 import { reportsApi, assessmentsApi, engineApi } from '../../services/api'
-import { ReportPackageDTO, ReportFileDTO, AssessmentDTO } from '../../types'
+import { ReportPackageDTO, ReportFileDTO, AssessmentDTO, ComplianceTimelinePoint } from '../../types'
 import {
   PageLoader, StatusBadge, EmptyState, Spinner
 } from '../../components/ui'
+import DashboardComplianceChart from '../../components/DashboardComplianceChart'
 import { format } from 'date-fns'
+import toast from 'react-hot-toast'
 
 const FILE_TYPE_LABELS: Record<string, string> = {
   executive_summary: 'Executive Summary (PDF)',
@@ -68,6 +70,14 @@ export default function ClientReports() {
   const [downloadingFile, setDownloadingFile] = useState<string | null>(null)
   const [snapshotPassPct, setSnapshotPassPct] = useState<number | null>(null)
   const [snapshotGaps, setSnapshotGaps] = useState<{ Critical: number; High: number; Medium: number; Low: number } | null>(null)
+  const [timeline, setTimeline] = useState<ComplianceTimelinePoint[]>([])
+
+  useEffect(() => {
+    if (!tenantId) return
+    reportsApi.getTimeline(tenantId)
+      .then(r => setTimeline(r.data?.timeline ?? []))
+      .catch(() => setTimeline([]))
+  }, [tenantId])
 
   useEffect(() => {
     if (!tenantId) return
@@ -108,28 +118,56 @@ export default function ClientReports() {
     if (!tenantId) return
     setDownloadingFile(fileId)
     try {
-      const res = await reportsApi.downloadFile(tenantId, fileId)
-      const url = res.data.download_url
+      const res = await reportsApi.downloadFileStream(tenantId, fileId)
+      const blob = res.data as Blob
+      const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = fileName
-      link.target = '_blank'
+      link.download = fileName || 'download'
       link.click()
+      URL.revokeObjectURL(url)
     } catch (e) {
-      alert('Download failed. Please try again.')
+      console.error(e)
+      toast.error('Download failed. Please try again.')
     } finally {
       setDownloadingFile(null)
     }
   }
 
+  /** Только последний отчёт по каждому ассессменту (макс. package_version) */
+  const latestPackages = React.useMemo(() => {
+    const sorted = [...packages].sort((a, b) => (b.package_version ?? 0) - (a.package_version ?? 0))
+    const seen = new Set<string>()
+    return sorted.filter((p) => {
+      const aid = p.assessment_id ?? p.id
+      if (seen.has(aid)) return false
+      seen.add(aid)
+      return true
+    })
+  }, [packages])
+
   const downloadPackage = async (packageId: string) => {
     if (!tenantId) return
     setDownloadingFile(packageId)
     try {
-      const res = await reportsApi.download(tenantId, packageId)
-      window.open(res.data.download_url, '_blank')
+      const filesRes = await reportsApi.listPackageFiles(tenantId, packageId)
+      const files = (filesRes.data || []) as ReportFileDTO[]
+      const execFile = files.find((f) => f.file_type === 'executive_summary') || files[0]
+      if (!execFile) {
+        toast.error('No files in this package.')
+        return
+      }
+      const res = await reportsApi.downloadFileStream(tenantId, execFile.id)
+      const blob = res.data as Blob
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = execFile.file_name || 'report.pdf'
+      link.click()
+      URL.revokeObjectURL(url)
     } catch (e) {
-      alert('Download failed. Please try again.')
+      console.error(e)
+      toast.error('Download failed. Please try again.')
     } finally {
       setDownloadingFile(null)
     }
@@ -183,7 +221,20 @@ export default function ClientReports() {
         </div>
       )}
 
-      {packages.length === 0 ? (
+      {/* Compliance Progress Over Time — график над отчётами */}
+      <div className="card p-5 border border-blue-500/20">
+        <h2 className="text-base font-semibold text-slate-200 mb-2 flex items-center gap-2">
+          <TrendingUp size={20} className="text-blue-400" />
+          Compliance Progress Over Time
+        </h2>
+        <p className="text-sm text-slate-500 mb-4">
+          Score history for each published report. 80%+ indicates strong readiness.
+        </p>
+        <DashboardComplianceChart timeline={timeline} />
+      </div>
+
+      {/* Report packages — только последний по каждому ассессменту */}
+      {latestPackages.length === 0 ? (
         <div className="card">
           <EmptyState
             icon={<Clock size={22} />}
@@ -199,7 +250,7 @@ export default function ClientReports() {
         </div>
       ) : (
         <div className="space-y-4">
-          {packages.map(pkg => {
+          {latestPackages.map(pkg => {
             const assessment = assessments[pkg.assessment_id]
             return (
               <div key={pkg.id} className="card overflow-hidden">

@@ -39,6 +39,13 @@ from app.schemas.schemas import (
 from app.services.audit import log_event
 from app.services import storage
 from app.services.report_generator import generate_all_reports
+from app.services.compliance_history import record_published_score, get_compliance_timeline
+from app.services.engine import run_engine
+from app.services.claude_document_requests import (
+    get_claude_document_requests,
+    resolve_control_id_by_code,
+)
+from app.models.models import Notification
 
 router = APIRouter(prefix="/tenants/{tenant_id}", tags=["reports"])
 
@@ -191,6 +198,10 @@ async def generate_report_package(
     )
 
     try:
+        # Run engine first so report and percentage reflect latest answers + evidence
+        await run_engine(assessment, db)
+        await db.flush()
+
         # Delete existing files for this package (re-generate)
         existing_files = await db.execute(
             select(ReportFile).where(ReportFile.package_id == package_id)
@@ -382,6 +393,13 @@ async def publish_report_package(
     pkg.published_at = now
     pkg.updated_at = now
 
+    await record_published_score(
+        tenant_id=tenant_id,
+        assessment_id=pkg.assessment_id,
+        report_package_id=package_id,
+        db=db,
+    )
+
     await log_event(
         db, "report_package_published",
         tenant_id=tenant_id, user_id=current_user.id,
@@ -394,6 +412,88 @@ async def publish_report_package(
         status="published",
         published_at=now,
     )
+
+
+# ── Claude document requests (до отчёта: запросы клиенту, сырые данные клиенту не отдаём) ─
+
+@router.post(
+    "/assessments/{assessment_id}/claude/document-requests",
+    response_model=dict,
+    summary="Claude analyzes context and creates document requests for client (internal only)",
+)
+async def claude_document_requests(
+    tenant_id: str,
+    assessment_id: str,
+    current_user: User = Depends(get_current_user),
+    membership: TenantMember = Depends(get_membership),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Движок перезапускается, собирается полный контекст (ответы, доказательства, данные агента).
+    Контекст передаётся только Claude; клиент не видит сырой вывод платформы.
+    Claude возвращает список запросов документов → создаются уведомления клиенту (document_request).
+    Итоговый отчёт потом формирует только Claude при Generate.
+    """
+    require_internal(membership)
+    assessment = await _get_assessment_or_404(assessment_id, tenant_id, db)
+
+    await run_engine(assessment, db)
+    await db.flush()
+
+    requests_list, claude_used = await get_claude_document_requests(
+        assessment_id=assessment_id,
+        tenant_id=tenant_id,
+        db=db,
+        max_requests=15,
+    )
+
+    created = 0
+    for req in requests_list:
+        control_code = req.get("control_code") or ""
+        reason = req.get("reason") or "Additional evidence needed"
+        suggested = req.get("suggested_document") or "Supporting document"
+        message = f"{reason}. Suggested: {suggested}"
+        subject = f"Document request: {control_code}"
+        control_uuid = await resolve_control_id_by_code(assessment_id, control_code, db)
+        notification = Notification(
+            tenant_id=tenant_id,
+            user_id=None,
+            type="document_request",
+            subject=subject,
+            message=message,
+            sent_by=current_user.id,
+            read=False,
+        )
+        db.add(notification)
+        created += 1
+    await db.commit()
+
+    await log_event(
+        db, "claude_document_requests_created",
+        tenant_id=tenant_id, user_id=current_user.id,
+        entity_type="assessment", entity_id=assessment_id,
+        payload={"count": created, "requests": requests_list},
+    )
+
+    return {
+        "assessment_id": assessment_id,
+        "requests": requests_list,
+        "notifications_created": created,
+        "claude_used": claude_used,
+    }
+
+
+# ── Compliance Timeline (SESSION 8) ───────────────────────────────────────────
+
+@router.get("/reports/compliance-timeline")
+async def get_compliance_timeline_route(
+    tenant_id: str,
+    membership: TenantMember = Depends(get_membership),
+    db: AsyncSession = Depends(get_db),
+):
+    """Compliance score history for chart (published reports only)."""
+    timeline = await get_compliance_timeline(tenant_id, db)
+    return {"tenant_id": tenant_id, "timeline": timeline}
 
 
 # ── Download Package (ZIP) ─────────────────────────────────────────────────────

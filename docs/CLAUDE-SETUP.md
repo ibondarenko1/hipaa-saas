@@ -1,24 +1,28 @@
-# Claude Analyst (слой анализа доказательств)
+# Claude (Anthropic API) — включение и проверка
 
-Claude используется для оценки загруженных доказательств по HIPAA-контролям (extract текста → analyze).
+**Claude не «запускается» отдельно** — это вызовы API Anthropic из backend. Если ключ не задан, backend не вызывает Claude: запросы документов идут через fallback (по списку контролов без доказательств), AI-нарратив в отчёте — шаблонный.
 
 ## Настройка
 
 1. **Ключ Anthropic:** https://console.anthropic.com/ → API Keys → Create Key. Скопируй ключ (начинается с `sk-ant-`).
 
-2. **Добавь в `.env`** в корне проекта (рядом с `docker-compose.yml`):
+2. **Файл `.env`** в корне проекта (рядом с `docker-compose.yml`). Если его нет: `cp .env.example .env`. Добавь или раскомментируй:
    ```env
    ANTHROPIC_API_KEY=sk-ant-твой_ключ
    CLAUDE_ANALYST_ENABLED=true
    ```
-   Сохрани файл. В `.env` уже могут быть `OPENAI_API_KEY` и `CHATGPT_CONCIERGE_ENABLED` — оставь их.
+   Сохрани файл.
 
-3. **Пересоздай backend**, чтобы подхватить переменные:
+3. **Перезапуск backend**, чтобы подхватить переменные:
    ```powershell
    docker compose up -d --force-recreate backend
    ```
 
-4. **Проверка:**
+4. **Проверка, что Claude реально работает:**
+   - Быстро: `Invoke-RestMethod -Uri "http://localhost:8000/health"` → `claude_configured: True` значит ключ задан.
+   - **Полная проверка (тест API):** залогинься в портал, затем в браузере или через API с токеном вызови `GET /api/v1/claude/check`. В ответе: `claude_usable: True` — API отвечает; если `claude_usable: False` — смотри `claude_error` и `claude_error_message` (например, **insufficient_credits** — пополни счёт в console.anthropic.com → Plans & Billing; **invalid_api_key** — неверный ключ). Так сразу видно биллинг/ключ, без ожидания генерации отчёта.
+
+   Либо скрипт:
    ```powershell
    .\docs\check-claude.ps1
    ```

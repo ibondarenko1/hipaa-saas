@@ -504,3 +504,11 @@ from app.models.ai_evidence import (  # noqa: E402
     ClientNote,
     AssistantMessageLog,
 )
+# Audit Workflow, Self-Attestation, Compliance Timeline (SESSION 8)
+from app.models.workflow import (  # noqa: E402
+    ControlRequiredEvidence,
+    AuditWorkflowState,
+    SelfAttestation,
+    AuditChecklistItem,
+    ComplianceScoreHistory,
+)

@@ -156,6 +156,42 @@ export const reportsApi = {
   /** Stream file through backend — use this for reliable download in the browser. */
   downloadFileStream: (tenantId: string, fileId: string) =>
     api.get(`/tenants/${tenantId}/reports/files/${fileId}/download`, { responseType: 'blob' }),
+  /** Compliance score history for timeline chart (SESSION 8). */
+  getTimeline: (tenantId: string) =>
+    api.get(`/tenants/${tenantId}/reports/compliance-timeline`),
+  /** Claude analyzes context and creates document requests for client (internal). Client sees notifications (bell). */
+  requestClaudeDocumentRequests: (tenantId: string, assessmentId: string) =>
+    api.post<{ assessment_id: string; requests: { control_code: string; reason: string; suggested_document: string }[]; notifications_created: number; claude_used?: boolean }>(
+      `/tenants/${tenantId}/assessments/${assessmentId}/claude/document-requests`,
+      {},
+    ),
+}
+
+// ── Workflow (SESSION 8) ───────────────────────────────────────────────────────
+export const workflowApi = {
+  getStatus: (tenantId: string, assessmentId: string) =>
+    api.get(`/tenants/${tenantId}/assessments/${assessmentId}/workflow/status`),
+  advance: (tenantId: string, assessmentId: string) =>
+    api.post(`/tenants/${tenantId}/assessments/${assessmentId}/workflow/advance`),
+  getChecklist: (tenantId: string, assessmentId: string) =>
+    api.get(`/tenants/${tenantId}/assessments/${assessmentId}/workflow/checklist`),
+  respondNoDocument: (tenantId: string, assessmentId: string, itemId: string, reason?: string) =>
+    api.post(`/tenants/${tenantId}/assessments/${assessmentId}/workflow/checklist/${itemId}/respond`, {
+      response: 'no_document',
+      reason: reason ?? undefined,
+    }),
+  selfAttest: (
+    tenantId: string,
+    assessmentId: string,
+    data: {
+      control_id: string
+      required_evidence_id: string
+      attested_by_name: string
+      attested_by_title?: string | null
+      checklist_items_confirmed: string[]
+    }
+  ) =>
+    api.post(`/tenants/${tenantId}/assessments/${assessmentId}/workflow/self-attest`, data),
 }
 
 // ── Notifications ─────────────────────────────────────────────────────────────

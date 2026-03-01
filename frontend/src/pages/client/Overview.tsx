@@ -4,12 +4,13 @@ import {
   ClipboardList, FileText, CheckCircle2, AlertTriangle, Clock,
   ArrowRight, Upload, Send, Activity, Users, Award, GraduationCap
 } from 'lucide-react'
-import { assessmentsApi, tenantsApi, evidenceApi, auditApi, workforceApi, trainingApi } from '../../services/api'
-import { AssessmentDTO, AssessmentProgress, TenantDTO, AuditEventDTO } from '../../types'
+import { assessmentsApi, tenantsApi, evidenceApi, auditApi, workforceApi, trainingApi, reportsApi } from '../../services/api'
+import { AssessmentDTO, AssessmentProgress, TenantDTO, AuditEventDTO, ComplianceTimelinePoint } from '../../types'
 import { hipaaEvidenceData } from '../../data/hipaaEvidence'
 import {
   StatusBadge, ProgressBar, EmptyState, ProgressRing, PageLoader
 } from '../../components/ui'
+import DashboardComplianceChart from '../../components/DashboardComplianceChart'
 import { format } from 'date-fns'
 import clsx from 'clsx'
 
@@ -26,6 +27,7 @@ export default function ClientOverview() {
   const [workforceStats, setWorkforceStats] = useState<{ total_employees: number; completed_assignments: number; total_assignments: number; overdue_assignments: number } | null>(null)
   const [trainingModules, setTrainingModules] = useState<Array<{ id: string; title: string }>>([])
   const [trainingCompleted, setTrainingCompleted] = useState(0)
+  const [timeline, setTimeline] = useState<ComplianceTimelinePoint[]>([])
   const [loading, setLoading] = useState(true)
   const [controlFilter, setControlFilter] = useState<FilterTab>('All')
 
@@ -39,8 +41,9 @@ export default function ClientOverview() {
       workforceApi.getStats(tenantId).catch(() => ({ data: null })),
       trainingApi.getTrainingModules(tenantId).catch(() => ({ data: [] })),
       trainingApi.getTrainingAssignments(tenantId).catch(() => ({ data: [] })),
+      reportsApi.getTimeline(tenantId).catch(() => ({ data: { timeline: [] } })),
     ])
-      .then(async ([tRes, aRes, eRes, auditRes, wRes, modRes, assignRes]) => {
+      .then(async ([tRes, aRes, eRes, auditRes, wRes, modRes, assignRes, timelineRes]) => {
         setTenant(tRes.data)
         setEvidenceFiles(eRes.data)
         setAuditEvents(Array.isArray(auditRes.data) ? auditRes.data : [])
@@ -49,6 +52,8 @@ export default function ClientOverview() {
         setTrainingModules(modules.map((m: { id: string; title: string }) => ({ id: m.id, title: m.title })))
         const assignments = Array.isArray(assignRes.data) ? assignRes.data : []
         setTrainingCompleted(assignments.filter((a: { completed_at?: string | null }) => a.completed_at).length)
+        const timelineData = (timelineRes as { data?: { timeline?: ComplianceTimelinePoint[] } })?.data?.timeline ?? []
+        setTimeline(Array.isArray(timelineData) ? timelineData : [])
         const all: AssessmentDTO[] = aRes.data
         const active = all.find((a) => a.status !== 'completed') || all[0]
         setAssessment(active ?? null)
@@ -269,6 +274,18 @@ export default function ClientOverview() {
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Compliance Timeline Chart (5C) */}
+      <div className="card p-5">
+        <h2 className="text-base font-semibold text-slate-200 mb-2">Compliance progress over time</h2>
+        <p className="text-sm text-slate-500 mb-4">
+          Score history from published reports. The green zone above 80% is your target.
+        </p>
+        <DashboardComplianceChart
+          timeline={timeline}
+          currentScorePercent={timeline.length === 0 ? pct : undefined}
+        />
       </div>
 
       {/* Card 4 — Controls Grid */}

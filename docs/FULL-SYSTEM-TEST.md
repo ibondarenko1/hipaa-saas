@@ -107,7 +107,7 @@ Then you **manually**:
 
 ## Quick checks (without full cycle)
 
-- **Backend**: `curl http://localhost:8000/health` → `{"status":"ok","version":"..."}`.
+- **Backend**: `Invoke-RestMethod -Uri "http://localhost:8000/health"` (PowerShell) → `status: ok`, `claude_configured: True/False`.
 - **Frontend**: open http://localhost:5173 → Login page loads.
 - **API docs**: http://localhost:8000/docs → Swagger UI loads.
 - **MinIO**: http://localhost:9001 (minioadmin / minioadmin) → bucket `hipaa-evidence` exists.
